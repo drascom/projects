@@ -114,11 +114,8 @@ fi
 echo "✅ Port \$FIXED_PORT is free. Starting mitmweb..."
 echo "Web UI available at http://localhost:8081/"
 
-mitmweb --mode reverse:${OLLAMA_TARGET}@${FIXED_PORT} \
--p ${FIXED_PORT} \
---web-host 0.0.0.0 \
---web-allow-hosts '*' \
--s "${INSTALL_DIR}/ollama_intercept.py"EOF
+mitmweb --mode reverse:${OLLAMA_TARGET}@${FIXED_PORT} -p ${FIXED_PORT} --web-host 0.0.0.0 --web-allow-hosts '*' -s "${INSTALL_DIR}/ollama_intercept.py"
+EOF
 
 chmod +x "$INSTALL_DIR/start-mitmweb.sh"
 
