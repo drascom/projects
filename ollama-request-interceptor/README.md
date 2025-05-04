@@ -12,6 +12,31 @@ This tool sets up a proxy server that sits between your client applications and 
 - Troubleshoot issues with client applications
 - Support remote monitoring with client-server setup
 
+### Architecture
+
+The tool supports two deployment modes:
+
+1. **Local Mode**: The interceptor runs on the same machine as your Ollama server and client applications.
+2. **Client-Server Mode**: The interceptor runs on a server machine, and client machines can connect remotely to view the intercepted requests.
+
+In client-server mode, the architecture looks like this:
+
+```
+Server Machine:                          Client Machine:
++------------------+                     +------------------+
+| Ollama Server    |                     | Browser          |
+| (API: 11434)     |                     | (Web UI via SSH) |
++------------------+                     +------------------+
+         ↑                                        ↑
+         |                                        |
++------------------+     SSH Tunnel      +------------------+
+| Mitmproxy        | <------------------ | SSH Client       |
+| (Interceptor)    |                     | (Secure Tunnel)  |
++------------------+                     +------------------+
+```
+
+The SSH tunnel provides a secure encrypted connection between the client and server.
+
 ## Installation
 
 ### Prerequisites
@@ -28,7 +53,8 @@ Run the installation script on the server machine:
 
 ```bash
 # Clone the repository (if you haven't already)
-git clone https://github.com/yourusername/ollama-request-interceptor.git
+git clone https://github.com/drascom/projects.git
+cd projects/ollama-request-interceptor
 cd ollama-request-interceptor
 
 # Make the script executable
@@ -51,11 +77,11 @@ To set up a client that can connect to a remote server:
 
 ```bash
 # Clone the repository (if you haven't already)
-git clone https://github.com/yourusername/ollama-request-interceptor.git
-cd ollama-request-interceptor
+git clone https://github.com/drascom/projects.git
+cd projects/ollama-request-interceptor
 
-# Make the script executable
-chmod +x install-client.sh
+# Make all scripts executable
+chmod +x install-client.sh uninstall-client.sh
 
 # Run the installer
 ./install-client.sh
@@ -295,6 +321,7 @@ rm -rf ~/ollama-interceptor-client
 Or use the uninstall script:
 
 ```bash
+chmod +x uninstall-client.sh
 ./uninstall-client.sh
 ```
 
@@ -316,6 +343,14 @@ When enabling remote access, consider the following security measures:
 
 This tool is intended for development and debugging purposes only. Even with authentication enabled, it should be used with caution in production environments.
 
+## Changelog
+
+### Latest Updates
+- Added client-server support for remote monitoring
+- Added authentication for web UI access
+- Added SSH tunnel for secure remote connections
+- Improved documentation with architecture diagram and security considerations
+
 ## Last Updated
 
-May 1, 2025
+May 15, 2025
