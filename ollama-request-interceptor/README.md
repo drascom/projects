@@ -25,17 +25,17 @@ In client-server mode, the architecture looks like this:
 Server Machine:                          Client Machine:
 +------------------+                     +------------------+
 | Ollama Server    |                     | Browser          |
-| (API: 11434)     |                     | (Web UI via SSH) |
+| (API: 11434)     |                     | (Web UI)         |
 +------------------+                     +------------------+
          ↑                                        ↑
          |                                        |
-+------------------+     SSH Tunnel      +------------------+
-| Mitmproxy        | <------------------ | SSH Client       |
-| (Interceptor)    |                     | (Secure Tunnel)  |
++------------------+     Direct HTTP     +------------------+
+| Mitmproxy        | <------------------ | Web Browser      |
+| (Interceptor)    |     Connection      | (Direct Access)  |
 +------------------+                     +------------------+
 ```
 
-The SSH tunnel provides a secure encrypted connection between the client and server.
+The client connects directly to the server's web interface. For security, it's recommended to enable authentication on the server.
 
 ## Installation
 
@@ -57,12 +57,10 @@ git clone https://github.com/drascom/projects.git
 cd projects/ollama-request-interceptor
 cd ollama-request-interceptor
 
-# Make the script executable
+# Make the script executable & Run the installer
 chmod +x install-interceptor.sh
-
-# Run the installer
 ./install-interceptor.sh
-```
+
 
 The script will:
 1. Install required dependencies
@@ -71,25 +69,35 @@ The script will:
 4. Create necessary configuration files
 5. Set up a system service to run the proxy
 
-### Client Installation
+### Installation for Different Modes
 
-To set up a client that can connect to a remote server:
+The interceptor can be installed in three different modes:
+
+1. **Local Mode** (default): Run locally without remote access
+2. **Server Mode**: Run as a server that can be accessed remotely
+3. **Client Mode**: Connect to a remote server
+
+To install in any mode:
 
 ```bash
 # Clone the repository (if you haven't already)
 git clone https://github.com/drascom/projects.git
 cd projects/ollama-request-interceptor
 
-# Make all scripts executable
-chmod +x install-client.sh uninstall-client.sh
+# Make the script executable
+chmod +x install-interceptor.sh
 
 # Run the installer
-./install-client.sh
+./install-interceptor.sh
 ```
 
-The client installer will:
-1. Create a configuration file for connecting to the server
-2. Set up an SSH tunnel script to securely connect to the server
+After installation, edit the `.env` file to set your desired mode:
+
+```bash
+nano ~/ollama-interceptor/.env
+```
+
+Set the `MODE` parameter to one of: `local`, `server`, or `client`. For client mode, you'll also need to set the `SERVER_HOST` parameter.
 
 ## Usage
 
@@ -179,28 +187,37 @@ sudo journalctl -u mitmweb
 
 ## Manual Operation
 
-If you prefer to run the proxy manually without using the system service:
+If you prefer to run the interceptor manually without using the system service:
 
 ```bash
 cd ~/ollama-interceptor
-./start-mitmweb.sh
+./start-interceptor.sh
 ```
 
 ## Customization
 
-### Changing the Target URL
+### Changing Basic Configuration
 
-If your Ollama server is running on a different port or host, edit the `.env` file:
+You can customize various settings by editing the `.env` file:
 
 ```bash
 nano ~/ollama-interceptor/.env
 ```
 
-Change the `TARGET_URL` variable to your desired URL.
+Common settings to change:
+- `MODE`: Set to `local`, `server`, or `client`
+- `TARGET_URL`: The URL of your Ollama server
+- `INTERCEPT_PORT`: The port to run the interceptor on
+- `WEB_UI_PORT`: The port for the web UI
+- `SERVER_HOST`: The hostname or IP of the server (for client mode)
+- `ENABLE_AUTH`: Set to `true` to enable authentication (recommended for server mode)
+- `AUTH_USERNAME` and `AUTH_PASSWORD`: Credentials for authentication
 
-### Setting Up Remote Access (Server)
+### Configuring Different Modes
 
-To enable remote access to the web UI, edit the `.env` file:
+#### Server Mode Configuration
+
+To set up a server that can be accessed remotely, edit the `.env` file:
 
 ```bash
 nano ~/ollama-interceptor/.env
@@ -209,7 +226,7 @@ nano ~/ollama-interceptor/.env
 Set the following options:
 
 ```
-ALLOW_REMOTE=true
+MODE=server
 ENABLE_AUTH=true
 AUTH_USERNAME=your_username
 AUTH_PASSWORD=your_secure_password
@@ -227,23 +244,36 @@ launchctl stop com.ollama.interceptor
 launchctl start com.ollama.interceptor
 ```
 
-### Configuring Client Connection
+#### Client Mode Configuration
 
-To configure a client to connect to a remote server, edit the client configuration:
+To configure a client to connect to a remote server, edit the `.env` file:
 
 ```bash
-nano ~/ollama-interceptor-client/client.env
+nano ~/ollama-interceptor/.env
 ```
 
 Set the following options:
 
 ```
+MODE=client
 SERVER_HOST=your_server_hostname_or_ip
-SERVER_WEB_UI_PORT=8081  # Match the server's WEB_UI_PORT
-AUTH_USERNAME=your_username  # If authentication is enabled on the server
-AUTH_PASSWORD=your_password  # If authentication is enabled on the server
-LOCAL_PORT=8082  # The local port to use for the SSH tunnel
+WEB_UI_PORT=8081  # Match the server's WEB_UI_PORT
 ```
+
+If the server has authentication enabled, also set:
+
+```
+AUTH_USERNAME=your_username
+AUTH_PASSWORD=your_password
+```
+
+Then start the interceptor:
+
+```bash
+~/ollama-interceptor/start-interceptor.sh
+```
+
+This will open your browser directly to the server's web interface.
 
 ### Modifying Interception Logic
 
@@ -273,22 +303,22 @@ Check the logs for errors:
 
 ### Setting Up the Server
 
-1. Install the interceptor on the server machine using the server installation instructions
-2. Edit the `.env` file to enable remote access and authentication
+1. Install the interceptor on the server machine
+2. Edit the `.env` file to set `MODE=server` and configure authentication
 3. Restart the service to apply the changes
 4. Make sure the server's firewall allows connections to the Web UI port (default: 8081)
 
 ### Connecting from a Client
 
-1. Install the client component using the client installation instructions
-2. Edit the client configuration to point to your server
-3. Run the connection script:
+1. Install the interceptor on the client machine
+2. Edit the `.env` file to set `MODE=client` and configure the server connection
+3. Run the interceptor:
 
 ```bash
-~/ollama-interceptor-client/client-connect.sh
+~/ollama-interceptor/start-interceptor.sh
 ```
 
-This will establish an SSH tunnel to the server and open the web UI in your browser.
+This will open your browser directly to the server's web interface.
 
 ## Uninstallation
 
@@ -312,17 +342,13 @@ sudo systemctl daemon-reload
 rm -rf ~/ollama-interceptor
 ```
 
-### Client Uninstallation
+### Uninstalling Any Mode
+
+The uninstallation process is the same for all modes:
 
 ```bash
-rm -rf ~/ollama-interceptor-client
-```
-
-Or use the uninstall script:
-
-```bash
-chmod +x uninstall-client.sh
-./uninstall-client.sh
+chmod +x uninstall-interceptor.sh
+./uninstall-interceptor.sh
 ```
 
 ## Security Considerations
@@ -338,7 +364,7 @@ When enabling remote access, consider the following security measures:
 1. **Always enable authentication** when allowing remote access
 2. Use strong, unique passwords for the web UI
 3. Consider using a firewall to restrict access to the web UI port
-4. The SSH tunnel used by the client provides an encrypted connection to the server
+4. For additional security, consider setting up HTTPS using a reverse proxy
 5. For production environments, consider setting up a VPN or other secure network instead of exposing the web UI directly
 
 This tool is intended for development and debugging purposes only. Even with authentication enabled, it should be used with caution in production environments.
@@ -348,7 +374,8 @@ This tool is intended for development and debugging purposes only. Even with aut
 ### Latest Updates
 - Added client-server support for remote monitoring
 - Added authentication for web UI access
-- Added SSH tunnel for secure remote connections
+- Implemented direct browser connection to server (no SSH tunnel required)
+- Unified configuration with a single .env file for all modes
 - Improved documentation with architecture diagram and security considerations
 
 ## Last Updated
