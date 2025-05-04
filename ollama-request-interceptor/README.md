@@ -10,6 +10,7 @@ This tool sets up a proxy server that sits between your client applications and 
 - Debug client-server interactions
 - Understand the Ollama API format
 - Troubleshoot issues with client applications
+- Support remote monitoring with client-server setup
 
 ## Installation
 
@@ -19,10 +20,11 @@ This tool sets up a proxy server that sits between your client applications and 
 - Python 3.x
 - For macOS: Homebrew (will be installed if missing)
 - For Linux: apt package manager
+- For client-server setup: SSH client on client machines
 
-### Automatic Installation
+### Server Installation
 
-Run the installation script:
+Run the installation script on the server machine:
 
 ```bash
 # Clone the repository (if you haven't already)
@@ -42,6 +44,26 @@ The script will:
 3. Install mitmproxy
 4. Create necessary configuration files
 5. Set up a system service to run the proxy
+
+### Client Installation
+
+To set up a client that can connect to a remote server:
+
+```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/yourusername/ollama-request-interceptor.git
+cd ollama-request-interceptor
+
+# Make the script executable
+chmod +x install-client.sh
+
+# Run the installer
+./install-client.sh
+```
+
+The client installer will:
+1. Create a configuration file for connecting to the server
+2. Set up an SSH tunnel script to securely connect to the server
 
 ## Usage
 
@@ -142,13 +164,60 @@ cd ~/ollama-interceptor
 
 ### Changing the Target URL
 
-If your Ollama server is running on a different port or host, edit the `start-mitmweb.sh` script:
+If your Ollama server is running on a different port or host, edit the `.env` file:
 
 ```bash
-nano ~/ollama-interceptor/start-mitmweb.sh
+nano ~/ollama-interceptor/.env
 ```
 
-Change the `OLLAMA_TARGET` variable to your desired URL.
+Change the `TARGET_URL` variable to your desired URL.
+
+### Setting Up Remote Access (Server)
+
+To enable remote access to the web UI, edit the `.env` file:
+
+```bash
+nano ~/ollama-interceptor/.env
+```
+
+Set the following options:
+
+```
+ALLOW_REMOTE=true
+ENABLE_AUTH=true
+AUTH_USERNAME=your_username
+AUTH_PASSWORD=your_secure_password
+SERVER_HOST=your_server_hostname_or_ip  # Optional, will auto-detect if not set
+```
+
+Then restart the service:
+
+```bash
+# For Linux
+sudo systemctl restart mitmweb
+
+# For macOS
+launchctl stop com.ollama.interceptor
+launchctl start com.ollama.interceptor
+```
+
+### Configuring Client Connection
+
+To configure a client to connect to a remote server, edit the client configuration:
+
+```bash
+nano ~/ollama-interceptor-client/client.env
+```
+
+Set the following options:
+
+```
+SERVER_HOST=your_server_hostname_or_ip
+SERVER_WEB_UI_PORT=8081  # Match the server's WEB_UI_PORT
+AUTH_USERNAME=your_username  # If authentication is enabled on the server
+AUTH_PASSWORD=your_password  # If authentication is enabled on the server
+LOCAL_PORT=8082  # The local port to use for the SSH tunnel
+```
 
 ### Modifying Interception Logic
 
@@ -174,9 +243,32 @@ Check the logs for errors:
 - macOS: `cat ~/ollama-interceptor/error.log`
 - Linux: `sudo journalctl -u mitmweb`
 
+## Client-Server Usage
+
+### Setting Up the Server
+
+1. Install the interceptor on the server machine using the server installation instructions
+2. Edit the `.env` file to enable remote access and authentication
+3. Restart the service to apply the changes
+4. Make sure the server's firewall allows connections to the Web UI port (default: 8081)
+
+### Connecting from a Client
+
+1. Install the client component using the client installation instructions
+2. Edit the client configuration to point to your server
+3. Run the connection script:
+
+```bash
+~/ollama-interceptor-client/client-connect.sh
+```
+
+This will establish an SSH tunnel to the server and open the web UI in your browser.
+
 ## Uninstallation
 
-### macOS
+### Server Uninstallation
+
+#### macOS
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.ollama.interceptor.plist
@@ -184,7 +276,7 @@ rm ~/Library/LaunchAgents/com.ollama.interceptor.plist
 rm -rf ~/ollama-interceptor
 ```
 
-### Linux
+#### Linux
 
 ```bash
 sudo systemctl stop mitmweb
@@ -194,9 +286,35 @@ sudo systemctl daemon-reload
 rm -rf ~/ollama-interceptor
 ```
 
+### Client Uninstallation
+
+```bash
+rm -rf ~/ollama-interceptor-client
+```
+
+Or use the uninstall script:
+
+```bash
+./uninstall-client.sh
+```
+
 ## Security Considerations
 
-This tool is intended for development and debugging purposes only. The proxy does not implement any authentication or encryption, so it should only be used in trusted environments.
+### Local Usage
+
+When used locally, this tool is relatively safe as it only listens on localhost by default.
+
+### Remote Usage
+
+When enabling remote access, consider the following security measures:
+
+1. **Always enable authentication** when allowing remote access
+2. Use strong, unique passwords for the web UI
+3. Consider using a firewall to restrict access to the web UI port
+4. The SSH tunnel used by the client provides an encrypted connection to the server
+5. For production environments, consider setting up a VPN or other secure network instead of exposing the web UI directly
+
+This tool is intended for development and debugging purposes only. Even with authentication enabled, it should be used with caution in production environments.
 
 ## Last Updated
 

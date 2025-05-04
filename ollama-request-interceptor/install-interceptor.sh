@@ -6,8 +6,46 @@ set -e
 INSTALL_DIR="$HOME/ollama-interceptor"
 VENV_DIR="$INSTALL_DIR/mitmproxy-env"
 SERVICE_NAME="mitmweb"
+
+# Default settings (will be overridden by .env if it exists)
 TARGET_URL="http://localhost:11434"
 INTERCEPT_PORT=8080
+WEB_UI_PORT=8081
+
+# Create .env file if it doesn't exist
+if [ ! -f .env ]; then
+    echo "Creating default .env file..."
+    cp .env.example .env
+fi
+
+# Load environment variables from .env
+if [ -f .env ]; then
+    echo "Loading configuration from .env file..."
+    # Use grep and cut to extract values (more portable than source)
+    ENV_TARGET_URL=$(grep -E '^TARGET_URL=' .env | cut -d '=' -f 2-)
+    ENV_INTERCEPT_PORT=$(grep -E '^INTERCEPT_PORT=' .env | cut -d '=' -f 2-)
+    ENV_WEB_UI_PORT=$(grep -E '^WEB_UI_PORT=' .env | cut -d '=' -f 2-)
+    ENV_ENABLE_AUTH=$(grep -E '^ENABLE_AUTH=' .env | cut -d '=' -f 2-)
+    ENV_AUTH_USERNAME=$(grep -E '^AUTH_USERNAME=' .env | cut -d '=' -f 2-)
+    ENV_AUTH_PASSWORD=$(grep -E '^AUTH_PASSWORD=' .env | cut -d '=' -f 2-)
+    ENV_ALLOW_REMOTE=$(grep -E '^ALLOW_REMOTE=' .env | cut -d '=' -f 2-)
+    ENV_SERVER_HOST=$(grep -E '^SERVER_HOST=' .env | cut -d '=' -f 2-)
+
+    # Override defaults if values are set in .env
+    [ -n "$ENV_TARGET_URL" ] && TARGET_URL="$ENV_TARGET_URL"
+    [ -n "$ENV_INTERCEPT_PORT" ] && INTERCEPT_PORT="$ENV_INTERCEPT_PORT"
+    [ -n "$ENV_WEB_UI_PORT" ] && WEB_UI_PORT="$ENV_WEB_UI_PORT"
+    [ -n "$ENV_ENABLE_AUTH" ] && ENABLE_AUTH="$ENV_ENABLE_AUTH"
+    [ -n "$ENV_AUTH_USERNAME" ] && AUTH_USERNAME="$ENV_AUTH_USERNAME"
+    [ -n "$ENV_AUTH_PASSWORD" ] && AUTH_PASSWORD="$ENV_AUTH_PASSWORD"
+    [ -n "$ENV_ALLOW_REMOTE" ] && ALLOW_REMOTE="$ENV_ALLOW_REMOTE"
+    [ -n "$ENV_SERVER_HOST" ] && SERVER_HOST="$ENV_SERVER_HOST"
+fi
+
+echo "=== Configuration ==="
+echo "Target URL: $TARGET_URL"
+echo "Intercept Port: $INTERCEPT_PORT"
+echo "Web UI Port: $WEB_UI_PORT"
 
 # Detect OS
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -29,7 +67,7 @@ elif [ "$OS_TYPE" == "macos" ]; then
         echo "Homebrew not found. Installing Homebrew..."
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
-    
+
     # Install required packages
     brew install python3 curl
 fi
@@ -45,7 +83,7 @@ if [ "$OS_TYPE" == "linux" ]; then
 elif [ "$OS_TYPE" == "macos" ]; then
     # Add to bash profile if it exists
     [ -f "$HOME/.bash_profile" ] && echo 'export PATH=$PATH:$HOME/.local/bin' >> "$HOME/.bash_profile"
-    
+
     # For zsh, append to zshrc but don't source it to avoid errors
     if [ -f "$HOME/.zshrc" ]; then
         # Check if PATH is already in .zshrc to avoid duplicates
@@ -53,7 +91,7 @@ elif [ "$OS_TYPE" == "macos" ]; then
             echo 'export PATH=$PATH:$HOME/.local/bin' >> "$HOME/.zshrc"
         fi
     fi
-    
+
     # Just export the PATH for the current session instead of sourcing
     export PATH=$PATH:$HOME/.local/bin
 fi
@@ -61,6 +99,12 @@ fi
 echo "=== Creating install directory at $INSTALL_DIR ==="
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
+
+# Copy .env file to installation directory
+if [ -f "$OLDPWD/.env" ]; then
+    echo "=== Copying .env file to installation directory ==="
+    cp "$OLDPWD/.env" "$INSTALL_DIR/.env"
+fi
 
 echo "=== Creating UV environment and installing mitmproxy ==="
 uv venv "$VENV_DIR"
@@ -94,6 +138,65 @@ INSTALL_DIR="$INSTALL_DIR"
 VENV_DIR="$VENV_DIR"
 OLLAMA_TARGET="$TARGET_URL"
 FIXED_PORT=$INTERCEPT_PORT
+WEB_UI_PORT=$WEB_UI_PORT
+ENABLE_AUTH=false
+AUTH_USERNAME="admin"
+AUTH_PASSWORD="changeme"
+ALLOW_REMOTE=false
+SERVER_HOST=""
+
+# Load environment variables from .env if it exists
+if [ -f "\$INSTALL_DIR/.env" ]; then
+    echo "Loading configuration from .env file..."
+    # Use grep and cut to extract values
+    ENV_TARGET_URL=\$(grep -E '^TARGET_URL=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_INTERCEPT_PORT=\$(grep -E '^INTERCEPT_PORT=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_WEB_UI_PORT=\$(grep -E '^WEB_UI_PORT=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_ENABLE_AUTH=\$(grep -E '^ENABLE_AUTH=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_AUTH_USERNAME=\$(grep -E '^AUTH_USERNAME=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_AUTH_PASSWORD=\$(grep -E '^AUTH_PASSWORD=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_ALLOW_REMOTE=\$(grep -E '^ALLOW_REMOTE=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+    ENV_SERVER_HOST=\$(grep -E '^SERVER_HOST=' "\$INSTALL_DIR/.env" | cut -d '=' -f 2-)
+
+    # Override defaults if values are set in .env
+    [ -n "\$ENV_TARGET_URL" ] && OLLAMA_TARGET="\$ENV_TARGET_URL"
+    [ -n "\$ENV_INTERCEPT_PORT" ] && FIXED_PORT="\$ENV_INTERCEPT_PORT"
+    [ -n "\$ENV_WEB_UI_PORT" ] && WEB_UI_PORT="\$ENV_WEB_UI_PORT"
+    [ -n "\$ENV_ENABLE_AUTH" ] && ENABLE_AUTH="\$ENV_ENABLE_AUTH"
+    [ -n "\$ENV_AUTH_USERNAME" ] && AUTH_USERNAME="\$ENV_AUTH_USERNAME"
+    [ -n "\$ENV_AUTH_PASSWORD" ] && AUTH_PASSWORD="\$ENV_AUTH_PASSWORD"
+    [ -n "\$ENV_ALLOW_REMOTE" ] && ALLOW_REMOTE="\$ENV_ALLOW_REMOTE"
+    [ -n "\$ENV_SERVER_HOST" ] && SERVER_HOST="\$ENV_SERVER_HOST"
+fi
+
+echo "=== Configuration ==="
+echo "Target URL: \$OLLAMA_TARGET"
+echo "Intercept Port: \$FIXED_PORT"
+echo "Web UI Port: \$WEB_UI_PORT"
+
+# Show remote access configuration
+if [ "\$ALLOW_REMOTE" = "true" ]; then
+    echo "Remote Access: Enabled"
+    if [ "\$ENABLE_AUTH" = "true" ]; then
+        echo "Authentication: Enabled"
+    else
+        echo "Authentication: Disabled (not recommended for remote access)"
+    fi
+
+    # Get server IP if SERVER_HOST is not set
+    if [ -z "\$SERVER_HOST" ]; then
+        if command -v hostname &> /dev/null; then
+            SERVER_HOST=\$(hostname -I | awk '{print \$1}')
+            echo "Server IP: \$SERVER_HOST (auto-detected)"
+        else
+            echo "Warning: Could not auto-detect server IP. Remote clients will need to specify it manually."
+        fi
+    else
+        echo "Server Host: \$SERVER_HOST"
+    fi
+else
+    echo "Remote Access: Disabled"
+fi
 
 # Activate UV environment
 if [ -d "\$VENV_DIR" ]; then
@@ -112,9 +215,31 @@ fi
 
 # Start mitmweb
 echo "✅ Port \$FIXED_PORT is free. Starting mitmweb..."
-echo "Web UI available at http://localhost:8081/"
 
-mitmweb --mode reverse:${OLLAMA_TARGET}@${FIXED_PORT} -p ${FIXED_PORT} --web-host 0.0.0.0 --web-allow-hosts '*' -s "${INSTALL_DIR}/ollama_intercept.py"
+# Set web host based on remote access setting
+WEB_HOST="127.0.0.1"
+if [ "\$ALLOW_REMOTE" = "true" ]; then
+    WEB_HOST="0.0.0.0"
+    echo "Web UI available at:"
+    echo "- Local: http://localhost:\$WEB_UI_PORT/"
+    if [ -n "\$SERVER_HOST" ]; then
+        echo "- Remote: http://\$SERVER_HOST:\$WEB_UI_PORT/"
+    else
+        echo "- Remote: http://<server-ip>:\$WEB_UI_PORT/"
+    fi
+else
+    echo "Web UI available at http://localhost:\$WEB_UI_PORT/"
+fi
+
+# Set authentication if enabled
+AUTH_ARGS=""
+if [ "\$ENABLE_AUTH" = "true" ]; then
+    AUTH_ARGS="--web-username \$AUTH_USERNAME --web-password \$AUTH_PASSWORD"
+    echo "Authentication required: Username: \$AUTH_USERNAME"
+fi
+
+# Start mitmweb with the appropriate options
+mitmweb --mode reverse:\${OLLAMA_TARGET}@\${FIXED_PORT} -p \${FIXED_PORT} --web-port \${WEB_UI_PORT} --web-host \${WEB_HOST} --allow-hosts ".*" -s "\$INSTALL_DIR/ollama_intercept.py" \${AUTH_ARGS}
 EOF
 
 chmod +x "$INSTALL_DIR/start-mitmweb.sh"
@@ -178,4 +303,33 @@ fi
 
 echo "✅ All done!"
 echo "➡ API Proxy available at: http://localhost:$INTERCEPT_PORT/"
-echo "➡ Web UI available at: http://localhost:8081/"
+echo "➡ Web UI available at: http://localhost:$WEB_UI_PORT/"
+echo ""
+echo "To change configuration, edit: $INSTALL_DIR/.env"
+echo "Then restart the service:"
+if [ "$OS_TYPE" == "linux" ]; then
+    echo "  sudo systemctl restart $SERVICE_NAME"
+else
+    echo "  launchctl stop com.ollama.interceptor"
+    echo "  launchctl start com.ollama.interceptor"
+fi
+
+# Open web UI in the default browser
+echo "=== Opening Web UI in browser ==="
+if [ "$OS_TYPE" == "linux" ]; then
+    # Try various browser opening commands for Linux
+    if command -v xdg-open &> /dev/null; then
+        xdg-open "http://localhost:$WEB_UI_PORT/" &
+    elif command -v gnome-open &> /dev/null; then
+        gnome-open "http://localhost:$WEB_UI_PORT/" &
+    elif command -v gio &> /dev/null; then
+        gio open "http://localhost:$WEB_UI_PORT/" &
+    else
+        echo "Could not automatically open browser. Please visit http://localhost:$WEB_UI_PORT/ manually."
+    fi
+elif [ "$OS_TYPE" == "macos" ]; then
+    # macOS browser opening command
+    open "http://localhost:$WEB_UI_PORT/"
+fi
+
+echo "=== Installation Complete ==="
