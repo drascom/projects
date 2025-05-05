@@ -150,12 +150,59 @@ install_system_deps() {
         ;;
     esac
   else
+    # macOS-specific installation
+    print_msg "Installing macOS dependencies..." "$BLUE"
+
+    # Check for Homebrew and install if needed
     if ! command_exists brew; then
       print_msg "Homebrew not found – installing (may prompt for password)" "$YELLOW"
       /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-      eval "$(/opt/homebrew/bin/brew shellenv || /usr/local/bin/brew shellenv)"
+
+      # Add Homebrew to PATH based on architecture
+      if [[ -d "/opt/homebrew/bin" ]]; then
+        # Apple Silicon (M1/M2)
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+        export PATH="/opt/homebrew/bin:$PATH"
+      elif [[ -d "/usr/local/bin" ]]; then
+        # Intel Mac
+        eval "$(/usr/local/bin/brew shellenv)"
+        export PATH="/usr/local/bin:$PATH"
+      fi
+
+      print_msg "Homebrew installed and added to PATH" "$GREEN"
     fi
+
+    # Install required packages
+    print_msg "Installing required packages with Homebrew..." "$BLUE"
     brew install git mosquitto python3 pipx uv || true
+
+    # Check if osx-cpu-temp is needed for temperature monitoring
+    if ! command_exists osx-cpu-temp; then
+      print_msg "Installing osx-cpu-temp for macOS temperature monitoring..." "$BLUE"
+      brew install osx-cpu-temp || true
+    fi
+
+    # Start Mosquitto service if installed
+    if command_exists mosquitto && brew services list | grep -q mosquitto; then
+      print_msg "Starting Mosquitto MQTT broker..." "$BLUE"
+      brew services start mosquitto || true
+    fi
+
+    # Verify Python installation
+    if command_exists python3; then
+      PYTHON_VERSION=$(python3 --version 2>&1)
+      print_msg "Python detected: $PYTHON_VERSION" "$GREEN"
+    else
+      print_msg "Python not found after installation - there may be issues" "$RED"
+    fi
+
+    # Verify uv installation
+    if command_exists uv; then
+      UV_VERSION=$(uv --version 2>&1)
+      print_msg "uv detected: $UV_VERSION" "$GREEN"
+    else
+      print_msg "uv not found after installation - will try alternative methods later" "$YELLOW"
+    fi
   fi
 }
 
@@ -232,104 +279,205 @@ create_virtual_env() {
 
   print_msg "Working directory: $(pwd)" "$BLUE"
 
-  # Check if uv is available using uv --version
-  if ! uv --version &>/dev/null; then
-    print_msg "uv not found – installing via pipx" "$YELLOW"
-
-    # Install pipx if needed
-    local PIPX_COMMAND="pipx"
-    if ! command_exists pipx; then
-      print_msg "pipx not found – installing" "$YELLOW"
-      "$PYTHON" -m pip install --user --upgrade pipx
-      "$PYTHON" -m pipx ensurepath
-      export PATH="$HOME/.local/bin:$PATH"
-
-      # Check if pipx is now in PATH, otherwise use full path
-      if [[ -f "$HOME/.local/bin/pipx" ]]; then
-        PIPX_COMMAND="$HOME/.local/bin/pipx"
-        print_msg "Using pipx at $PIPX_COMMAND" "$GREEN"
-      elif [[ -f "/usr/local/bin/pipx" ]]; then
-        PIPX_COMMAND="/usr/local/bin/pipx"
-        print_msg "Using pipx at $PIPX_COMMAND" "$GREEN"
-      fi
-    fi
-
-    # Install uv using pipx or pip
-    run_as_user "$PIPX_COMMAND" install --force uv || {
-      print_msg "pipx failed – installing uv via pip" "$YELLOW"
-      run_as_user "$PYTHON" -m pip install --user --upgrade uv
-    }
-
-    # Verify uv is now in PATH and accessible
-    if [[ -f "$HOME/.local/bin/uv" ]]; then
-      export PATH="$HOME/.local/bin:$PATH"
-      print_msg "Added uv to PATH" "$GREEN"
-    elif [[ -f "/usr/local/bin/uv" ]]; then
-      export PATH="/usr/local/bin:$PATH"
-      print_msg "Added uv to PATH" "$GREEN"
-    fi
-
-    # Verify uv is now accessible
-    if ! uv --version &>/dev/null; then
-      print_msg "uv installation succeeded but command not found in PATH" "$YELLOW"
-      print_msg "Trying to locate uv binary..." "$BLUE"
-      UV_PATH=$(find "$HOME/.local" /usr/local -name uv -type f 2>/dev/null | head -1)
-      if [[ -n "$UV_PATH" ]]; then
-        print_msg "Found uv at $UV_PATH" "$GREEN"
-        export PATH="$(dirname "$UV_PATH"):$PATH"
-      else
-        print_msg "Could not locate uv binary" "$RED"
-      fi
-    fi
-  fi
-
-  # Check if uv is now available and get its path
+  # ─── Install uv if needed ───────────────────────────────────────────────────
   local UV_COMMAND=""
-  if uv --version &>/dev/null; then
+
+  # First check if uv is already available
+  if command_exists uv; then
+    print_msg "uv found in PATH" "$GREEN"
     UV_COMMAND="uv"
-  elif [[ -f "$HOME/.local/bin/uv" ]]; then
-    UV_COMMAND="$HOME/.local/bin/uv"
-  elif [[ -f "/usr/local/bin/uv" ]]; then
-    UV_COMMAND="/usr/local/bin/uv"
   else
-    # Try to find uv in PATH
-    UV_COMMAND=$(which uv 2>/dev/null || echo "")
+    print_msg "uv not found – installing..." "$YELLOW"
+
+    # macOS-specific installation via Homebrew if available
+    if [[ $OS == "macos" ]] && command_exists brew; then
+      print_msg "Installing uv via Homebrew on macOS" "$BLUE"
+      brew install uv || true
+
+      if command_exists uv; then
+        print_msg "uv installed successfully via Homebrew" "$GREEN"
+        UV_COMMAND="uv"
+      fi
+    fi
+
+    # If still not available, try pipx
+    if [[ -z "$UV_COMMAND" ]]; then
+      print_msg "Installing uv via pipx" "$BLUE"
+
+      # Install pipx if needed
+      if ! command_exists pipx; then
+        print_msg "pipx not found – installing" "$YELLOW"
+        "$PYTHON" -m pip install --user --upgrade pipx
+        "$PYTHON" -m pipx ensurepath
+        export PATH="$HOME/.local/bin:$PATH"
+      fi
+
+      # Try to install uv with pipx
+      if command_exists pipx; then
+        pipx install --force uv || true
+
+        if command_exists uv; then
+          print_msg "uv installed successfully via pipx" "$GREEN"
+          UV_COMMAND="uv"
+        fi
+      fi
+    fi
+
+    # Last resort: direct pip installation
+    if [[ -z "$UV_COMMAND" ]]; then
+      print_msg "Installing uv via pip" "$BLUE"
+      "$PYTHON" -m pip install --user --upgrade uv
+
+      # Update PATH to include user bin directories
+      export PATH="$HOME/.local/bin:$PATH"
+
+      if command_exists uv; then
+        print_msg "uv installed successfully via pip" "$GREEN"
+        UV_COMMAND="uv"
+      else
+        # Try to find uv binary
+        print_msg "Searching for uv binary..." "$YELLOW"
+        local UV_PATH=""
+
+        # Common locations based on OS
+        if [[ $OS == "macos" ]]; then
+          UV_PATH=$(find "$HOME/.local/bin" "/usr/local/bin" "/opt/homebrew/bin" -name uv -type f 2>/dev/null | head -1)
+        else
+          UV_PATH=$(find "$HOME/.local/bin" "/usr/local/bin" -name uv -type f 2>/dev/null | head -1)
+        fi
+
+        if [[ -n "$UV_PATH" ]]; then
+          print_msg "Found uv at $UV_PATH" "$GREEN"
+          UV_COMMAND="$UV_PATH"
+          export PATH="$(dirname "$UV_PATH"):$PATH"
+        fi
+      fi
+    fi
   fi
 
+  # ─── Create virtual environment ───────────────────────────────────────────────
   if [[ -n "$UV_COMMAND" ]]; then
-    # Build venv with uv (idempotent)
-    print_msg "Using uv to create virtual environment" "$BLUE"
-    # Use correct syntax for uv venv (without --seed pip)
-    run_as_user "$UV_COMMAND" venv .venv || true
-  elif command_exists pyenv; then
-    # Fallback to pyenv if available
-    print_msg "uv not available - falling back to pyenv" "$YELLOW"
-    run_as_user pyenv virtualenv 3.10 mqtt-monitor-env || true
-    run_as_user ln -sf "$(pyenv prefix mqtt-monitor-env)" .venv
+    print_msg "Creating virtual environment with uv" "$BLUE"
+
+    # Remove existing venv if it exists but is broken
+    if [[ -d ".venv" && ! -x ".venv/bin/python3" && ! -x ".venv/bin/python" ]]; then
+      print_msg "Existing virtual environment appears broken, removing it" "$YELLOW"
+      rm -rf .venv
+    fi
+
+    # Create virtual environment with uv
+    run_as_user "$UV_COMMAND" venv .venv
+
+    # Verify the virtual environment was created successfully
+    if [[ ! -d ".venv" ]]; then
+      print_msg "Failed to create virtual environment with uv" "$RED"
+      print_msg "Falling back to standard venv" "$YELLOW"
+      run_as_user "$PYTHON" -m venv .venv
+    else
+      print_msg "Virtual environment created successfully with uv" "$GREEN"
+    fi
   else
-    # Fallback to standard venv
-    print_msg "uv and pyenv not available - falling back to standard venv" "$YELLOW"
-    run_as_user "$PYTHON" -m venv .venv
+    print_msg "uv not available - using standard venv" "$YELLOW"
+
+    # Try pyenv if available
+    if command_exists pyenv; then
+      print_msg "Using pyenv to create virtual environment" "$BLUE"
+      run_as_user pyenv virtualenv 3.10 mqtt-monitor-env || true
+      run_as_user ln -sf "$(pyenv prefix mqtt-monitor-env)" .venv
+    else
+      # Fallback to standard venv
+      print_msg "Using standard venv module" "$BLUE"
+      run_as_user "$PYTHON" -m venv .venv
+    fi
   fi
 
-  # Ensure Python and pip are available in the virtual environment
-  [[ -x .venv/bin/python ]] || { print_msg "Virtual env creation failed - falling back to python -m venv" "$YELLOW"; run_as_user "$PYTHON" -m venv .venv; }
-  [[ -x .venv/bin/pip ]]   || run_as_user .venv/bin/python -m ensurepip --upgrade
-  print_msg "Virtual environment ready" "$GREEN"
+  # ─── Verify Python environment ───────────────────────────────────────────────
+  # Find Python in the virtual environment
+  local VENV_PYTHON=""
 
-  # Install Python requirements
-  if [[ -f requirements.txt ]]; then
+  if [[ -x ".venv/bin/python3" ]]; then
+    VENV_PYTHON=".venv/bin/python3"
+  elif [[ -x ".venv/bin/python" ]]; then
+    VENV_PYTHON=".venv/bin/python"
+  fi
+
+  # If no Python found, try to fix the virtual environment
+  if [[ -z "$VENV_PYTHON" ]]; then
+    print_msg "No Python executable found in virtual environment" "$RED"
+    print_msg "Attempting to recreate virtual environment" "$YELLOW"
+
+    # Remove broken venv
+    rm -rf .venv
+
+    # Create new venv with standard module
+    run_as_user "$PYTHON" -m venv .venv
+
+    # Check again
+    if [[ -x ".venv/bin/python3" ]]; then
+      VENV_PYTHON=".venv/bin/python3"
+    elif [[ -x ".venv/bin/python" ]]; then
+      VENV_PYTHON=".venv/bin/python"
+    else
+      print_msg "Failed to create a working virtual environment" "$RED"
+      return 1
+    fi
+  fi
+
+  print_msg "Using Python at $VENV_PYTHON" "$GREEN"
+
+  # ─── Install requirements ───────────────────────────────────────────────────
+  if [[ -f "requirements.txt" ]]; then
     print_msg "Installing Python requirements..." "$BLUE"
+
     if [[ -n "$UV_COMMAND" ]]; then
-      # Use uv for faster package installation if available
-      print_msg "Using uv for package installation" "$GREEN"
-      run_as_user "$UV_COMMAND" pip install -r requirements.txt || run_as_user .venv/bin/pip install -r requirements.txt
+      # Use uv for faster package installation
+      print_msg "Using uv for package installation (faster)" "$GREEN"
+
+      # macOS-specific handling
+      if [[ $OS == "macos" ]]; then
+        print_msg "Using macOS-specific installation with uv" "$BLUE"
+
+        # First try with uv directly
+        run_as_user "$UV_COMMAND" pip install -r requirements.txt || {
+          print_msg "Direct uv installation had issues, trying with venv activation" "$YELLOW"
+
+          # Try with explicit venv path
+          run_as_user "$UV_COMMAND" pip install --python "$VENV_PYTHON" -r requirements.txt || {
+            print_msg "uv installation failed, falling back to pip" "$RED"
+            run_as_user "$VENV_PYTHON" -m pip install -r requirements.txt
+          }
+        }
+      else
+        # Standard installation for other platforms
+        run_as_user "$UV_COMMAND" pip install -r requirements.txt || {
+          print_msg "uv installation failed, falling back to pip" "$RED"
+          run_as_user "$VENV_PYTHON" -m pip install -r requirements.txt
+        }
+      fi
     else
       # Fall back to regular pip
-      run_as_user .venv/bin/pip install -r requirements.txt
+      print_msg "Using standard pip for package installation" "$YELLOW"
+      run_as_user "$VENV_PYTHON" -m pip install -r requirements.txt
     fi
+
     print_msg "Python requirements installed" "$GREEN"
+
+    # Verify critical packages are installed
+    print_msg "Verifying critical packages..." "$BLUE"
+    if ! run_as_user "$VENV_PYTHON" -c "import dotenv" &>/dev/null; then
+      print_msg "python-dotenv package not found, installing directly" "$YELLOW"
+      run_as_user "$VENV_PYTHON" -m pip install python-dotenv
+    fi
+
+    if ! run_as_user "$VENV_PYTHON" -c "import flask" &>/dev/null; then
+      print_msg "Flask package not found, installing directly" "$YELLOW"
+      run_as_user "$VENV_PYTHON" -m pip install flask
+    fi
+
+    print_msg "Critical packages verified" "$GREEN"
   fi
+
+  print_msg "Virtual environment setup complete" "$GREEN"
 }
 
 # ─── .env configuration wizard ─────────────────────────────────────────────
@@ -519,6 +667,38 @@ SERVICE
   else
     print_msg "Creating launchd service for macOS..." "$BLUE"
 
+    # Find the correct Python executable in the virtual environment
+    local VENV_PYTHON=""
+    if [[ -x "$INSTALL_DIR/.venv/bin/python3" ]]; then
+      VENV_PYTHON="$INSTALL_DIR/.venv/bin/python3"
+    elif [[ -x "$INSTALL_DIR/.venv/bin/python" ]]; then
+      VENV_PYTHON="$INSTALL_DIR/.venv/bin/python"
+    else
+      print_msg "No Python executable found in virtual environment" "$RED"
+      print_msg "Attempting to fix virtual environment..." "$YELLOW"
+
+      # Try to recreate the virtual environment
+      cd "$INSTALL_DIR" || return 1
+      if command_exists uv; then
+        run_as_user uv venv .venv
+      else
+        run_as_user "$PYTHON" -m venv .venv
+      fi
+
+      # Check again
+      if [[ -x "$INSTALL_DIR/.venv/bin/python3" ]]; then
+        VENV_PYTHON="$INSTALL_DIR/.venv/bin/python3"
+      elif [[ -x "$INSTALL_DIR/.venv/bin/python" ]]; then
+        VENV_PYTHON="$INSTALL_DIR/.venv/bin/python"
+      else
+        print_msg "Failed to create a working virtual environment" "$RED"
+        print_msg "Will try to use system Python as fallback" "$YELLOW"
+        VENV_PYTHON=$(which python3 || which python)
+      fi
+    fi
+
+    print_msg "Using Python at $VENV_PYTHON for service" "$GREEN"
+
     # Create launchd plist file
     print_msg "Writing launchd plist file..." "$BLUE"
     tee "$LAUNCHD_PLIST" >/dev/null <<PLIST
@@ -529,7 +709,7 @@ SERVICE
   <key>Label</key><string>com.mqtt-device-monitor</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$INSTALL_DIR/.venv/bin/python</string>
+    <string>$VENV_PYTHON</string>
     <string>$INSTALL_DIR/main.py</string>
   </array>
   <key>RunAtLoad</key><true/>
@@ -537,21 +717,47 @@ SERVICE
   <key>WorkingDirectory</key><string>$INSTALL_DIR</string>
   <key>StandardOutPath</key><string>$INSTALL_DIR/out.log</string>
   <key>StandardErrorPath</key><string>$INSTALL_DIR/error.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+  </dict>
 </dict>
 </plist>
 PLIST
+
+    # Ensure the plist file has the correct permissions
+    run_as_user chmod 644 "$LAUNCHD_PLIST"
 
     # Unload existing service if it exists
     print_msg "Unloading existing service if present..." "$BLUE"
     run_as_user launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
 
+    # Verify the plist file
+    print_msg "Verifying plist file..." "$BLUE"
+    if ! plutil -lint "$LAUNCHD_PLIST" &>/dev/null; then
+      print_msg "Plist file validation failed" "$RED"
+      print_msg "Attempting to fix plist file..." "$YELLOW"
+      plutil -convert xml1 "$LAUNCHD_PLIST" || true
+    fi
+
     # Load the service
     print_msg "Loading service..." "$BLUE"
     if run_as_user launchctl load -w "$LAUNCHD_PLIST"; then
       print_msg "Service created and started successfully" "$GREEN"
+
+      # Verify the service is running
+      if run_as_user launchctl list | grep -q "com.mqtt-device-monitor"; then
+        print_msg "Service is running" "$GREEN"
+      else
+        print_msg "Service loaded but may not be running" "$YELLOW"
+        print_msg "Starting service manually..." "$BLUE"
+        run_as_user launchctl start com.mqtt-device-monitor || true
+      fi
     else
       print_msg "Failed to load service" "$RED"
       print_msg "You can try starting it manually with: launchctl load -w $LAUNCHD_PLIST" "$YELLOW"
+      print_msg "Or run directly with: $VENV_PYTHON $INSTALL_DIR/main.py" "$YELLOW"
       return 1
     fi
   fi
