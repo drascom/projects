@@ -1,0 +1,28 @@
+# MQTT Client dependencies
+paho-mqtt==1.6.1
+python-dotenv==1.0.1
+psutil==5.9.8
+
+# GUI dependencies
+Flask==2.0.1
+Flask-SocketIO==5.1.1
+Werkzeug==2.0.1
+gunicorn==20.1.0
+eventlet==0.30.2
+
+# Optional dependencies for development and testing
+# Uncomment if needed
+# pyvis==0.3.1
+# networkx==3.1
+# pytest==7.3.1
+# pytest-cov==4.1.0
+# Sphinx==7.1.2
+# sphinx-rtd-theme==1.2.0
+
+# Optional platform-specific dependencies
+# These will be installed automatically by the installation script if needed
+# -----------------------------------------------------------------------
+# For Windows: pywin32==306
+# For Linux with NVIDIA GPUs (required for fan control module):
+py3nvml==0.2.7
+# For macOS: install osx-cpu-temp via Homebrew (brew install osx-cpu-temp)
