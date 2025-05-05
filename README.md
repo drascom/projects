@@ -8,6 +8,16 @@ This repository contains multiple independent projects, each in its own director
 A tool to intercept and monitor API requests between clients and Ollama server using mitmproxy.
 - [Go to project](./ollama-request-interceptor)
 
+### MQTT Device Monitor
+A modular application that monitors various device components (CPU, GPU) and publishes statistics to an MQTT broker, with an integrated web interface for visualization.
+- [Go to project](./mqtt-monitor)
+- **Features**:
+  - Cross-platform support (Linux, Windows, macOS)
+  - GPU monitoring (NVIDIA, Apple Silicon)
+  - CPU monitoring with temperature and frequency tracking
+  - Real-time web interface for data visualization
+  - Automatic service installation
+
 <!-- Add more projects as they are created -->
 
 ## Structure
@@ -20,8 +30,12 @@ repository/
 │   ├── README.md
 │   ├── install-interceptor.sh
 │   └── ...
-├── project-two/
+├── mqtt-monitor/
 │   ├── README.md
+│   ├── main.py
+│   ├── manage.sh
+│   ├── mqtt/
+│   ├── gui/
 │   └── ...
 └── ...
 ```
