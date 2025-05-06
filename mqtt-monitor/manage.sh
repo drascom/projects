@@ -350,68 +350,31 @@ EOF
 
         # Only create password file if username is provided
         if [[ -n "$mqtt_user" ]]; then
-          # Prompt for password with validation
-          local mqtt_pass=""
-          while [[ -z "$mqtt_pass" ]]; do
-            echo -n "Enter password for $mqtt_user: "
-            read -rs mqtt_pass </dev/tty
-            echo  # Add newline after password input
-
-            if [[ -z "$mqtt_pass" ]]; then
-              print_msg "Password cannot be empty when username is provided. Please try again." "$RED"
-            fi
-          done
-
-          # Store password for later use in .env
-          MQTT_PASSWORD="$mqtt_pass"
-
           # Create password file with error handling
           require_root
           print_msg "Creating password file at $passwd_file..." "$BLUE"
 
-          # First, ensure the file can be created
-          require_root touch "$passwd_file" || {
-            print_msg "Cannot create password file. Checking permissions..." "$RED"
-            require_root ls -la "$(dirname "$passwd_file")"
-            print_msg "Attempting to fix permissions..." "$YELLOW"
-            require_root chown -R mosquitto:mosquitto "$(dirname "$passwd_file")" 2>/dev/null || true
-            require_root chmod -R 755 "$(dirname "$passwd_file")" 2>/dev/null || true
-            require_root touch "$passwd_file" || true
-          }
+          # Ensure the directory exists
+          require_root mkdir -p "$(dirname "$passwd_file")" || true
 
-          # Verify the file exists and is writable
-          if [[ ! -f "$passwd_file" ]]; then
-            print_msg "Still cannot create password file. Creating in a temporary location..." "$RED"
-            passwd_file="/tmp/mosquitto_passwd"
-            require_root touch "$passwd_file"
+          # Create the password file using mosquitto_passwd
+          # This will prompt the user for a password twice
+          print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+          print_msg "Please enter the same password twice when prompted" "$YELLOW"
+          require_root mosquitto_passwd -c "$passwd_file" "$mqtt_user"
+
+          # Check if the password file was created successfully
+          if [[ ! -f "$passwd_file" || ! -s "$passwd_file" ]]; then
+            print_msg "Failed to create password file. Please try again." "$RED"
+            return 1
           fi
 
-          print_msg "Using password file: $passwd_file" "$GREEN"
+          print_msg "Password file created successfully at $passwd_file" "$GREEN"
 
-          # Use echo to pipe the password to mosquitto_passwd
-          echo "$mqtt_pass" | require_root mosquitto_passwd -c "$passwd_file" "$mqtt_user" 2>/dev/null || {
-            print_msg "Failed to create password file. Trying alternative method..." "$YELLOW"
-            # Alternative method: create a temporary file and use it
-            local temp_pass=$(mktemp)
-            echo "$mqtt_pass" > "$temp_pass"
-            require_root mosquitto_passwd -c -U "$passwd_file" "$mqtt_user" < "$temp_pass" 2>/dev/null || {
-              print_msg "Second method failed. Creating password file manually..." "$YELLOW"
-              echo "$mqtt_user:$(echo -n "$mqtt_pass" | openssl passwd -6 -stdin)" | require_root tee "$passwd_file" > /dev/null
-            }
-            rm -f "$temp_pass"
-          }
-
-          # Verify the file was created and has content
-          if [[ ! -s "$passwd_file" ]]; then
-            print_msg "Password file is empty. Creating it manually..." "$YELLOW"
-            # Last resort: create the file manually with a simple format
-            echo "$mqtt_user:$(echo -n "$mqtt_pass" | openssl passwd -6 -stdin)" | require_root tee "$passwd_file" > /dev/null
-          fi
-
-          # Set proper permissions
-          require_root
-          chown mosquitto:mosquitto "$passwd_file" 2>/dev/null || true
-          chmod 600 "$passwd_file" 2>/dev/null || true
+          # Set proper ownership and permissions
+          print_msg "Setting proper ownership and permissions..." "$BLUE"
+          require_root chown mosquitto:mosquitto "$passwd_file" 2>/dev/null || true
+          require_root chmod 600 "$passwd_file" 2>/dev/null || true
 
           # Verify the file exists and has content
           if [[ -s "$passwd_file" ]]; then
@@ -457,21 +420,8 @@ EOF
 
           # Only proceed if username is provided
           if [[ -n "$mqtt_user" ]]; then
-            # Prompt for password with validation
-            local mqtt_pass=""
-            while [[ -z "$mqtt_pass" ]]; do
-              echo -n "Enter password for $mqtt_user: "
-              read -rs mqtt_pass </dev/tty
-              echo  # Add newline after password input
-
-              if [[ -z "$mqtt_pass" ]]; then
-                print_msg "Password cannot be empty when username is provided. Please try again." "$RED"
-              fi
-            done
-
-            # Store for later use in .env
+            # Store username for later use in .env
             MQTT_USERNAME="$mqtt_user"
-            MQTT_PASSWORD="$mqtt_pass"
 
             # Verify the password file exists
             if [[ ! -f "$passwd_file" ]]; then
@@ -489,34 +439,28 @@ EOF
               }
             fi
 
-            # Add user with error handling
-            require_root
+            # Add user with mosquitto_passwd
             print_msg "Adding user to password file: $passwd_file" "$BLUE"
-            echo "$mqtt_pass" | require_root mosquitto_passwd "$passwd_file" "$mqtt_user" 2>/dev/null || {
-              print_msg "Failed to add user. Trying alternative method..." "$YELLOW"
-              local temp_pass=$(mktemp)
-              echo "$mqtt_pass" > "$temp_pass"
-              require_root mosquitto_passwd -U "$passwd_file" "$mqtt_user" < "$temp_pass" 2>/dev/null || {
-                print_msg "Second method failed. Adding user manually..." "$YELLOW"
-                # Extract existing content
-                local existing_content=""
-                if [[ -f "$passwd_file" ]]; then
-                  existing_content=$(cat "$passwd_file" | grep -v "^$mqtt_user:")
-                fi
-                # Add new user
-                (echo "$existing_content"; echo "$mqtt_user:$(echo -n "$mqtt_pass" | openssl passwd -6 -stdin)") | require_root tee "$passwd_file" > /dev/null
-              }
-              rm -f "$temp_pass"
-            }
-
-            # Set proper permissions
-            require_root
-            chown mosquitto:mosquitto "$passwd_file" 2>/dev/null || true
-            chmod 600 "$passwd_file" 2>/dev/null || true
+            print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+            print_msg "Please enter the same password twice when prompted" "$YELLOW"
+            require_root mosquitto_passwd "$passwd_file" "$mqtt_user"
 
             # Verify the user was added
             if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
               print_msg "User $mqtt_user added successfully to $passwd_file" "$GREEN"
+
+              # Set proper permissions
+              require_root chown mosquitto:mosquitto "$passwd_file" 2>/dev/null || true
+              require_root chmod 600 "$passwd_file" 2>/dev/null || true
+
+              # Restart Mosquitto to apply changes
+              print_msg "Restarting Mosquitto service to apply changes..." "$BLUE"
+              if systemctl is-active --quiet mosquitto; then
+                require_root systemctl restart mosquitto
+                print_msg "Mosquitto service restarted" "$GREEN"
+              else
+                print_msg "Mosquitto service not running, skipping restart" "$YELLOW"
+              fi
             else
               print_msg "Warning: Failed to verify user was added" "$RED"
             fi
@@ -588,63 +532,28 @@ EOF
 
         # Only create password file if username is provided
         if [[ -n "$mqtt_user" ]]; then
-          # Prompt for password with validation
-          local mqtt_pass=""
-          while [[ -z "$mqtt_pass" ]]; do
-            echo -n "Enter password for $mqtt_user: "
-            read -rs mqtt_pass </dev/tty
-            echo  # Add newline after password input
-
-            if [[ -z "$mqtt_pass" ]]; then
-              print_msg "Password cannot be empty when username is provided. Please try again." "$RED"
-            fi
-          done
-
-          # Store password for later use in .env
-          MQTT_PASSWORD="$mqtt_pass"
-
           # Create password file with error handling
           print_msg "Creating password file at $passwd_file..." "$BLUE"
 
-          # First, ensure the file can be created
-          touch "$passwd_file" || {
-            print_msg "Cannot create password file. Checking permissions..." "$RED"
-            ls -la "$(dirname "$passwd_file")"
-            print_msg "Attempting to fix permissions..." "$YELLOW"
-            chmod -R 755 "$(dirname "$passwd_file")" 2>/dev/null || true
-            touch "$passwd_file" || true
-          }
+          # Ensure the directory exists
+          mkdir -p "$(dirname "$passwd_file")" || true
 
-          # Verify the file exists and is writable
-          if [[ ! -f "$passwd_file" ]]; then
-            print_msg "Still cannot create password file. Creating in a temporary location..." "$RED"
-            passwd_file="/tmp/mosquitto_passwd"
-            touch "$passwd_file"
+          # Create the password file using mosquitto_passwd
+          # This will prompt the user for a password twice
+          print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+          print_msg "Please enter the same password twice when prompted" "$YELLOW"
+          mosquitto_passwd -c "$passwd_file" "$mqtt_user"
+
+          # Check if the password file was created successfully
+          if [[ ! -f "$passwd_file" || ! -s "$passwd_file" ]]; then
+            print_msg "Failed to create password file. Please try again." "$RED"
+            return 1
           fi
 
-          print_msg "Using password file: $passwd_file" "$GREEN"
-
-          # Use echo to pipe the password to mosquitto_passwd
-          echo "$mqtt_pass" | mosquitto_passwd -c "$passwd_file" "$mqtt_user" 2>/dev/null || {
-            print_msg "Failed to create password file. Trying alternative method..." "$YELLOW"
-            # Alternative method: create a temporary file and use it
-            local temp_pass=$(mktemp)
-            echo "$mqtt_pass" > "$temp_pass"
-            mosquitto_passwd -c -U "$passwd_file" "$mqtt_user" < "$temp_pass" 2>/dev/null || {
-              print_msg "Second method failed. Creating password file manually..." "$YELLOW"
-              echo "$mqtt_user:$(echo -n "$mqtt_pass" | openssl passwd -6 -stdin)" > "$passwd_file"
-            }
-            rm -f "$temp_pass"
-          }
-
-          # Verify the file was created and has content
-          if [[ ! -s "$passwd_file" ]]; then
-            print_msg "Password file is empty. Creating it manually..." "$YELLOW"
-            # Last resort: create the file manually with a simple format
-            echo "$mqtt_user:$(echo -n "$mqtt_pass" | openssl passwd -6 -stdin)" > "$passwd_file"
-          fi
+          print_msg "Password file created successfully at $passwd_file" "$GREEN"
 
           # Set proper permissions
+          print_msg "Setting proper permissions..." "$BLUE"
           chmod 600 "$passwd_file" 2>/dev/null || true
 
           # Verify the file exists and has content
@@ -722,24 +631,11 @@ EOF
               }
             fi
 
-            # Add user with error handling
+            # Add user with mosquitto_passwd
             print_msg "Adding user to password file: $passwd_file" "$BLUE"
-            echo "$mqtt_pass" | mosquitto_passwd "$passwd_file" "$mqtt_user" 2>/dev/null || {
-              print_msg "Failed to add user. Trying alternative method..." "$YELLOW"
-              local temp_pass=$(mktemp)
-              echo "$mqtt_pass" > "$temp_pass"
-              mosquitto_passwd -U "$passwd_file" "$mqtt_user" < "$temp_pass" 2>/dev/null || {
-                print_msg "Second method failed. Adding user manually..." "$YELLOW"
-                # Extract existing content
-                local existing_content=""
-                if [[ -f "$passwd_file" ]]; then
-                  existing_content=$(cat "$passwd_file" | grep -v "^$mqtt_user:")
-                fi
-                # Add new user
-                (echo "$existing_content"; echo "$mqtt_user:$(echo -n "$mqtt_pass" | openssl passwd -6 -stdin)") > "$passwd_file"
-              }
-              rm -f "$temp_pass"
-            }
+            print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+            print_msg "Please enter the same password twice when prompted" "$YELLOW"
+            mosquitto_passwd "$passwd_file" "$mqtt_user"
 
             # Set proper permissions
             chmod 600 "$passwd_file" 2>/dev/null || true
@@ -1615,6 +1511,56 @@ uninstall_workflow() {
   # Try to remove service even if OS detection failed
   print_msg "Attempting to remove service..." "$BLUE"
   remove_service
+
+  # Ask if user wants to remove Mosquitto
+  if ask_yn "Would you like to uninstall Mosquitto MQTT broker as well?" false; then
+    print_msg "Uninstalling Mosquitto MQTT broker..." "$BLUE"
+
+    if [[ $OS == "linux" ]]; then
+      # Linux uninstallation
+      if command_exists apt-get; then
+        print_msg "Removing Mosquitto using apt..." "$BLUE"
+        require_root
+        systemctl stop mosquitto || true
+        systemctl disable mosquitto || true
+        apt-get remove -y mosquitto mosquitto-clients || true
+        apt-get autoremove -y || true
+        # Remove configuration files
+        if ask_yn "Remove Mosquitto configuration files as well?" false; then
+          require_root
+          rm -rf /etc/mosquitto || true
+        fi
+      elif command_exists pacman; then
+        print_msg "Removing Mosquitto using pacman..." "$BLUE"
+        require_root
+        systemctl stop mosquitto || true
+        systemctl disable mosquitto || true
+        pacman -R --noconfirm mosquitto || true
+        # Remove configuration files
+        if ask_yn "Remove Mosquitto configuration files as well?" false; then
+          require_root
+          rm -rf /etc/mosquitto || true
+        fi
+      else
+        print_msg "Could not determine package manager. Please uninstall Mosquitto manually." "$YELLOW"
+      fi
+    else
+      # macOS uninstallation
+      if command_exists brew; then
+        print_msg "Removing Mosquitto using Homebrew..." "$BLUE"
+        brew services stop mosquitto || true
+        brew uninstall mosquitto || true
+        # Remove configuration files
+        if ask_yn "Remove Mosquitto configuration files as well?" false; then
+          rm -rf "$(brew --prefix)/etc/mosquitto" || true
+        fi
+      else
+        print_msg "Homebrew not found. Please uninstall Mosquitto manually." "$YELLOW"
+      fi
+    fi
+
+    print_msg "Mosquitto uninstallation completed" "$GREEN"
+  fi
 
   if ask_yn "Delete $INSTALL_DIR directory as well?" false; then
     print_msg "Removing installation directory..." "$BLUE"
