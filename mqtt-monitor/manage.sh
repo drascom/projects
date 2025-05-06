@@ -17,7 +17,7 @@
 #   Flags:  --install | --uninstall | --help                                   #
 ###############################################################################
 set -Eeuo pipefail
-shopt -s inherit_errexit
+# Removed inherit_errexit as it's not available in all bash versions
 
 ############################ Globals & helpers ################################
 INSTALL_DIR="/opt/mqtt-device-monitor"
