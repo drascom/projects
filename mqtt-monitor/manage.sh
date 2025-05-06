@@ -421,7 +421,7 @@ EOF
           else
             print_msg "Warning: Password file may not have been created properly" "$RED"
             print_msg "Authentication may not work correctly" "$RED"
-          }
+          fi
 
           # Update config file with the correct password file path
           if [[ "$passwd_file" != "/etc/mosquitto/passwd" ]]; then
@@ -655,7 +655,7 @@ EOF
           else
             print_msg "Warning: Password file may not have been created properly" "$RED"
             print_msg "Authentication may not work correctly" "$RED"
-          }
+          fi
 
           # Update config file with the correct password file path
           if [[ "$passwd_file" != "$(brew --prefix)/etc/mosquitto/passwd" ]]; then
