@@ -139,7 +139,13 @@ install_system_deps() {
     require_root
     case $DISTRO in
       ubuntu|debian)
+        # Full system update
+        print_msg "Updating system packages..." "$BLUE"
         apt-get update -y
+        apt-get upgrade -y
+
+        # Install required packages
+        print_msg "Installing required packages..." "$BLUE"
         DEBIAN_FRONTEND=noninteractive apt-get install -y git curl build-essential mosquitto "$PYTHON" "$PYTHON"-venv pipx uv || true
         ;;
       arch)
@@ -221,7 +227,12 @@ configure_mosquitto() {
         require_root
         case $DISTRO in
           ubuntu|debian)
+            # Update package lists
+            print_msg "Updating package lists..." "$BLUE"
             apt-get update -y
+
+            # Install Mosquitto and clients
+            print_msg "Installing Mosquitto and clients..." "$BLUE"
             DEBIAN_FRONTEND=noninteractive apt-get install -y mosquitto mosquitto-clients || true
             ;;
           arch)
@@ -1274,6 +1285,18 @@ remove_service() {
 # ─── Workflows ─────────────────────────────────────────────────────────────
 install_workflow() {
   print_msg "Starting installation workflow..." "$BLUE"
+
+  # Run system update for Linux systems
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    print_msg "Updating Linux system packages..." "$BLUE"
+    if command_exists apt-get; then
+      print_msg "Running apt update and upgrade..." "$BLUE"
+      sudo apt update && sudo apt upgrade -y
+      print_msg "System update completed" "$GREEN"
+    else
+      print_msg "apt-get not found, skipping system update" "$YELLOW"
+    fi
+  fi
 
   # Step 1: Detect OS
   print_msg "Step 1: Detecting OS..." "$BLUE"
