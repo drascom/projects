@@ -21,7 +21,7 @@ A modular application that monitors various device components and publishes stat
 The easiest way to install MQTT Device Monitor is using the unified management script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/mqtt-monitor/main/manage.sh | bash
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | bash
 ```
 
 This single command will:
@@ -35,7 +35,7 @@ This single command will:
 If you need to install system packages on Linux, run with sudo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/mqtt-monitor/main/manage.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | sudo bash
 ```
 
 ### Management Commands
@@ -61,13 +61,13 @@ The `manage.sh` script provides several options:
 You can also uninstall the application with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/mqtt-monitor/main/manage.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | bash -s -- --uninstall
 ```
 
 If you installed with sudo (on Linux), use:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/mqtt-monitor/main/manage.sh | sudo bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | sudo bash -s -- --uninstall
 ```
 
 This will:
@@ -114,7 +114,7 @@ The installation script will automatically create a `.env` file with your config
 
 2. Or manually edit the `.env` file:
    ```bash
-   nano ~/mqtt-monitor/.env
+   nano ~/projects/mqtt-monitor/.env
    ```
 
 Example configuration:
@@ -269,16 +269,16 @@ The installation script automatically sets up a system service. Here are the com
 
 ```bash
 # Start the service
-sudo systemctl start mqtt-monitor@<username>.service
+sudo systemctl start projects/mqtt-monitor@<username>.service
 
 # Stop the service
-sudo systemctl stop mqtt-monitor@<username>.service
+sudo systemctl stop projects/mqtt-monitor@<username>.service
 
 # Check status
-sudo systemctl status mqtt-monitor@<username>.service
+sudo systemctl status projects/mqtt-monitor@<username>.service
 
 # View logs
-journalctl -u mqtt-monitor@<username>.service -f
+journalctl -u projects/mqtt-monitor@<username>.service -f
 ```
 Replace `<username>` with your actual username.
 
@@ -286,13 +286,13 @@ Replace `<username>` with your actual username.
 
 ```bash
 # Start the service
-launchctl load ~/Library/LaunchAgents/com.mqtt-monitor.plist
+launchctl load ~/Library/LaunchAgents/com.projects/mqtt-monitor.plist
 
 # Stop the service
-launchctl unload ~/Library/LaunchAgents/com.mqtt-monitor.plist
+launchctl unload ~/Library/LaunchAgents/com.projects/mqtt-monitor.plist
 
 # Check status
-launchctl list | grep mqtt-monitor
+launchctl list | grep projects/mqtt-monitor
 ```
 
 ## Platform Support
