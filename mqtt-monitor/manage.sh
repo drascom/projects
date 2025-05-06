@@ -357,15 +357,110 @@ EOF
           # Ensure the directory exists
           require_root mkdir -p "$(dirname "$passwd_file")" || true
 
+          # Check if mosquitto_passwd command is available
+          if ! command_exists mosquitto_passwd; then
+            print_msg "mosquitto_passwd command not found. Installing mosquitto-clients..." "$YELLOW"
+            if [[ $DISTRO == "ubuntu" || $DISTRO == "debian" ]]; then
+              require_root apt-get update -y
+              require_root apt-get install -y mosquitto-clients
+            elif [[ $DISTRO == "arch" ]]; then
+              require_root pacman -Sy --noconfirm mosquitto
+            else
+              print_msg "Could not install mosquitto-clients automatically." "$RED"
+              print_msg "Please install mosquitto-clients manually and try again." "$RED"
+              return 1
+            fi
+          fi
+
+          # Ensure the directory has proper permissions
+          print_msg "Setting proper directory permissions..." "$BLUE"
+          require_root mkdir -p "$(dirname "$passwd_file")" || true
+          require_root chown -R mosquitto:mosquitto "$(dirname "$passwd_file")" 2>/dev/null || true
+          require_root chmod -R 755 "$(dirname "$passwd_file")" 2>/dev/null || true
+
           # Create the password file using mosquitto_passwd
           # This will prompt the user for a password twice
           print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
           print_msg "Please enter the same password twice when prompted" "$YELLOW"
-          require_root mosquitto_passwd -c "$passwd_file" "$mqtt_user"
 
-          # Check if the password file was created successfully
-          if [[ ! -f "$passwd_file" || ! -s "$passwd_file" ]]; then
-            print_msg "Failed to create password file. Please try again." "$RED"
+          # Try up to 3 times to create the password file
+          local max_attempts=3
+          local attempt=1
+          local success=false
+
+          while [[ $attempt -le $max_attempts && $success == false ]]; do
+            print_msg "Attempt $attempt of $max_attempts to create password file..." "$BLUE"
+
+            # Try to create the password file
+            require_root mosquitto_passwd -c "$passwd_file" "$mqtt_user"
+
+            # Check if the password file was created successfully
+            if [[ -f "$passwd_file" && -s "$passwd_file" ]]; then
+              success=true
+              print_msg "Password file created successfully!" "$GREEN"
+            else
+              attempt=$((attempt + 1))
+              if [[ $attempt -le $max_attempts ]]; then
+                print_msg "Failed to create password file. Trying again..." "$YELLOW"
+                sleep 1
+              fi
+            fi
+          done
+
+          # If all attempts failed, try a different approach
+          if [[ $success == false ]]; then
+            print_msg "All attempts to create password file failed. Trying alternative method..." "$RED"
+
+            # Try to create a temporary password file and then copy it
+            local temp_passwd=$(mktemp)
+            print_msg "Creating temporary password file at $temp_passwd" "$BLUE"
+            print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+            print_msg "Please enter the same password twice when prompted" "$YELLOW"
+
+            # Create password in temporary file
+            mosquitto_passwd -c "$temp_passwd" "$mqtt_user"
+
+            # Check if the temporary file was created successfully
+            if [[ -f "$temp_passwd" && -s "$temp_passwd" ]]; then
+              print_msg "Temporary password file created successfully. Copying to $passwd_file" "$GREEN"
+              require_root cp "$temp_passwd" "$passwd_file"
+              rm -f "$temp_passwd"
+
+              # Check if the copy was successful
+              if [[ -f "$passwd_file" && -s "$passwd_file" ]]; then
+                success=true
+                print_msg "Password file copied successfully!" "$GREEN"
+              fi
+            else
+              print_msg "Failed to create temporary password file." "$RED"
+              rm -f "$temp_passwd"
+            fi
+          fi
+
+          # If still not successful, create the file manually
+          if [[ $success == false ]]; then
+            print_msg "All methods failed. Creating password file manually..." "$RED"
+            print_msg "Enter password for user '$mqtt_user': " "$YELLOW"
+            read -rs manual_pass </dev/tty
+            echo  # Add newline after password input
+
+            if [[ -n "$manual_pass" ]]; then
+              # Create the password file manually
+              require_root touch "$passwd_file"
+              echo "$mqtt_user:$(echo -n "$manual_pass" | openssl passwd -6 -stdin)" | require_root tee "$passwd_file" > /dev/null
+
+              # Check if the file was created successfully
+              if [[ -f "$passwd_file" && -s "$passwd_file" ]]; then
+                success=true
+                print_msg "Password file created manually!" "$GREEN"
+              fi
+            fi
+          fi
+
+          # Final check
+          if [[ $success == false ]]; then
+            print_msg "All attempts to create password file failed." "$RED"
+            print_msg "Please check your system configuration and try again." "$RED"
             return 1
           fi
 
@@ -439,11 +534,120 @@ EOF
               }
             fi
 
+            # Check if mosquitto_passwd command is available
+            if ! command_exists mosquitto_passwd; then
+              print_msg "mosquitto_passwd command not found. Installing mosquitto-clients..." "$YELLOW"
+              if [[ $DISTRO == "ubuntu" || $DISTRO == "debian" ]]; then
+                require_root apt-get update -y
+                require_root apt-get install -y mosquitto-clients
+              elif [[ $DISTRO == "arch" ]]; then
+                require_root pacman -Sy --noconfirm mosquitto
+              else
+                print_msg "Could not install mosquitto-clients automatically." "$RED"
+                print_msg "Please install mosquitto-clients manually and try again." "$RED"
+                return 1
+              fi
+            fi
+
             # Add user with mosquitto_passwd
             print_msg "Adding user to password file: $passwd_file" "$BLUE"
             print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
             print_msg "Please enter the same password twice when prompted" "$YELLOW"
-            require_root mosquitto_passwd "$passwd_file" "$mqtt_user"
+
+            # Try up to 3 times to add the user
+            local max_attempts=3
+            local attempt=1
+            local success=false
+
+            while [[ $attempt -le $max_attempts && $success == false ]]; do
+              print_msg "Attempt $attempt of $max_attempts to add user..." "$BLUE"
+
+              # Try to add the user
+              require_root mosquitto_passwd "$passwd_file" "$mqtt_user"
+
+              # Verify the user was added
+              if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
+                success=true
+                print_msg "User added successfully!" "$GREEN"
+              else
+                attempt=$((attempt + 1))
+                if [[ $attempt -le $max_attempts ]]; then
+                  print_msg "Failed to add user. Trying again..." "$YELLOW"
+                  sleep 1
+                fi
+              fi
+            done
+
+            # If all attempts failed, try a different approach
+            if [[ $success == false ]]; then
+              print_msg "All attempts to add user failed. Trying alternative method..." "$RED"
+
+              # Try to create a temporary password file and then merge it
+              local temp_passwd=$(mktemp)
+              print_msg "Creating temporary password file at $temp_passwd" "$BLUE"
+              print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+              print_msg "Please enter the same password twice when prompted" "$YELLOW"
+
+              # Create password in temporary file
+              mosquitto_passwd -c "$temp_passwd" "$mqtt_user"
+
+              # Check if the temporary file was created successfully
+              if [[ -f "$temp_passwd" && -s "$temp_passwd" ]]; then
+                print_msg "Temporary password file created successfully. Merging with $passwd_file" "$GREEN"
+
+                # Extract the user line from the temporary file
+                local user_line=$(grep "^$mqtt_user:" "$temp_passwd")
+
+                if [[ -n "$user_line" ]]; then
+                  # Remove any existing entry for this user
+                  require_root sed -i "/^$mqtt_user:/d" "$passwd_file" 2>/dev/null || true
+
+                  # Append the new user line
+                  echo "$user_line" | require_root tee -a "$passwd_file" > /dev/null
+
+                  # Verify the user was added
+                  if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
+                    success=true
+                    print_msg "User added successfully via merge!" "$GREEN"
+                  fi
+                fi
+
+                # Clean up
+                rm -f "$temp_passwd"
+              else
+                print_msg "Failed to create temporary password file." "$RED"
+                rm -f "$temp_passwd"
+              fi
+            fi
+
+            # If still not successful, add the user manually
+            if [[ $success == false ]]; then
+              print_msg "All methods failed. Adding user manually..." "$RED"
+              print_msg "Enter password for user '$mqtt_user': " "$YELLOW"
+              read -rs manual_pass </dev/tty
+              echo  # Add newline after password input
+
+              if [[ -n "$manual_pass" ]]; then
+                # Remove any existing entry for this user
+                require_root sed -i "/^$mqtt_user:/d" "$passwd_file" 2>/dev/null || true
+
+                # Add the user manually
+                echo "$mqtt_user:$(echo -n "$manual_pass" | openssl passwd -6 -stdin)" | require_root tee -a "$passwd_file" > /dev/null
+
+                # Verify the user was added
+                if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
+                  success=true
+                  print_msg "User added manually!" "$GREEN"
+                fi
+              fi
+            fi
+
+            # Final check
+            if [[ $success == false ]]; then
+              print_msg "All attempts to add user failed." "$RED"
+              print_msg "Please check your system configuration and try again." "$RED"
+              return 1
+            fi
 
             # Verify the user was added
             if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
@@ -538,15 +742,105 @@ EOF
           # Ensure the directory exists
           mkdir -p "$(dirname "$passwd_file")" || true
 
+          # Check if mosquitto_passwd command is available
+          if ! command_exists mosquitto_passwd; then
+            print_msg "mosquitto_passwd command not found. Installing mosquitto..." "$YELLOW"
+            if command_exists brew; then
+              brew install mosquitto
+            else
+              print_msg "Homebrew not found. Please install mosquitto manually and try again." "$RED"
+              return 1
+            fi
+          fi
+
+          # Ensure the directory has proper permissions
+          print_msg "Setting proper directory permissions..." "$BLUE"
+          mkdir -p "$(dirname "$passwd_file")" || true
+          chmod -R 755 "$(dirname "$passwd_file")" 2>/dev/null || true
+
           # Create the password file using mosquitto_passwd
           # This will prompt the user for a password twice
           print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
           print_msg "Please enter the same password twice when prompted" "$YELLOW"
-          mosquitto_passwd -c "$passwd_file" "$mqtt_user"
 
-          # Check if the password file was created successfully
-          if [[ ! -f "$passwd_file" || ! -s "$passwd_file" ]]; then
-            print_msg "Failed to create password file. Please try again." "$RED"
+          # Try up to 3 times to create the password file
+          local max_attempts=3
+          local attempt=1
+          local success=false
+
+          while [[ $attempt -le $max_attempts && $success == false ]]; do
+            print_msg "Attempt $attempt of $max_attempts to create password file..." "$BLUE"
+
+            # Try to create the password file
+            mosquitto_passwd -c "$passwd_file" "$mqtt_user"
+
+            # Check if the password file was created successfully
+            if [[ -f "$passwd_file" && -s "$passwd_file" ]]; then
+              success=true
+              print_msg "Password file created successfully!" "$GREEN"
+            else
+              attempt=$((attempt + 1))
+              if [[ $attempt -le $max_attempts ]]; then
+                print_msg "Failed to create password file. Trying again..." "$YELLOW"
+                sleep 1
+              fi
+            fi
+          done
+
+          # If all attempts failed, try a different approach
+          if [[ $success == false ]]; then
+            print_msg "All attempts to create password file failed. Trying alternative method..." "$RED"
+
+            # Try to create a temporary password file and then copy it
+            local temp_passwd=$(mktemp)
+            print_msg "Creating temporary password file at $temp_passwd" "$BLUE"
+            print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+            print_msg "Please enter the same password twice when prompted" "$YELLOW"
+
+            # Create password in temporary file
+            mosquitto_passwd -c "$temp_passwd" "$mqtt_user"
+
+            # Check if the temporary file was created successfully
+            if [[ -f "$temp_passwd" && -s "$temp_passwd" ]]; then
+              print_msg "Temporary password file created successfully. Copying to $passwd_file" "$GREEN"
+              cp "$temp_passwd" "$passwd_file"
+              rm -f "$temp_passwd"
+
+              # Check if the copy was successful
+              if [[ -f "$passwd_file" && -s "$passwd_file" ]]; then
+                success=true
+                print_msg "Password file copied successfully!" "$GREEN"
+              fi
+            else
+              print_msg "Failed to create temporary password file." "$RED"
+              rm -f "$temp_passwd"
+            fi
+          fi
+
+          # If still not successful, create the file manually
+          if [[ $success == false ]]; then
+            print_msg "All methods failed. Creating password file manually..." "$RED"
+            print_msg "Enter password for user '$mqtt_user': " "$YELLOW"
+            read -rs manual_pass </dev/tty
+            echo  # Add newline after password input
+
+            if [[ -n "$manual_pass" ]]; then
+              # Create the password file manually
+              touch "$passwd_file"
+              echo "$mqtt_user:$(echo -n "$manual_pass" | openssl passwd -6 -stdin)" > "$passwd_file"
+
+              # Check if the file was created successfully
+              if [[ -f "$passwd_file" && -s "$passwd_file" ]]; then
+                success=true
+                print_msg "Password file created manually!" "$GREEN"
+              fi
+            fi
+          fi
+
+          # Final check
+          if [[ $success == false ]]; then
+            print_msg "All attempts to create password file failed." "$RED"
+            print_msg "Please check your system configuration and try again." "$RED"
             return 1
           fi
 
@@ -631,11 +925,120 @@ EOF
               }
             fi
 
+            # Check if mosquitto_passwd command is available
+            if ! command_exists mosquitto_passwd; then
+              print_msg "mosquitto_passwd command not found. Installing mosquitto..." "$YELLOW"
+              if command_exists brew; then
+                brew install mosquitto
+              else
+                print_msg "Homebrew not found. Please install mosquitto manually and try again." "$RED"
+                return 1
+              fi
+            fi
+
             # Add user with mosquitto_passwd
             print_msg "Adding user to password file: $passwd_file" "$BLUE"
             print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
             print_msg "Please enter the same password twice when prompted" "$YELLOW"
-            mosquitto_passwd "$passwd_file" "$mqtt_user"
+
+            # Try up to 3 times to add the user
+            local max_attempts=3
+            local attempt=1
+            local success=false
+
+            while [[ $attempt -le $max_attempts && $success == false ]]; do
+              print_msg "Attempt $attempt of $max_attempts to add user..." "$BLUE"
+
+              # Try to add the user
+              mosquitto_passwd "$passwd_file" "$mqtt_user"
+
+              # Verify the user was added
+              if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
+                success=true
+                print_msg "User added successfully!" "$GREEN"
+              else
+                attempt=$((attempt + 1))
+                if [[ $attempt -le $max_attempts ]]; then
+                  print_msg "Failed to add user. Trying again..." "$YELLOW"
+                  sleep 1
+                fi
+              fi
+            done
+
+            # If all attempts failed, try a different approach
+            if [[ $success == false ]]; then
+              print_msg "All attempts to add user failed. Trying alternative method..." "$RED"
+
+              # Try to create a temporary password file and then merge it
+              local temp_passwd=$(mktemp)
+              print_msg "Creating temporary password file at $temp_passwd" "$BLUE"
+              print_msg "You will be prompted to enter a password for user '$mqtt_user'" "$YELLOW"
+              print_msg "Please enter the same password twice when prompted" "$YELLOW"
+
+              # Create password in temporary file
+              mosquitto_passwd -c "$temp_passwd" "$mqtt_user"
+
+              # Check if the temporary file was created successfully
+              if [[ -f "$temp_passwd" && -s "$temp_passwd" ]]; then
+                print_msg "Temporary password file created successfully. Merging with $passwd_file" "$GREEN"
+
+                # Extract the user line from the temporary file
+                local user_line=$(grep "^$mqtt_user:" "$temp_passwd")
+
+                if [[ -n "$user_line" ]]; then
+                  # Remove any existing entry for this user
+                  sed -i.bak "/^$mqtt_user:/d" "$passwd_file" 2>/dev/null || true
+
+                  # Append the new user line
+                  echo "$user_line" >> "$passwd_file"
+
+                  # Verify the user was added
+                  if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
+                    success=true
+                    print_msg "User added successfully via merge!" "$GREEN"
+                  fi
+
+                  # Clean up backup file
+                  rm -f "${passwd_file}.bak" 2>/dev/null || true
+                fi
+
+                # Clean up
+                rm -f "$temp_passwd"
+              else
+                print_msg "Failed to create temporary password file." "$RED"
+                rm -f "$temp_passwd"
+              fi
+            fi
+
+            # If still not successful, add the user manually
+            if [[ $success == false ]]; then
+              print_msg "All methods failed. Adding user manually..." "$RED"
+              print_msg "Enter password for user '$mqtt_user': " "$YELLOW"
+              read -rs manual_pass </dev/tty
+              echo  # Add newline after password input
+
+              if [[ -n "$manual_pass" ]]; then
+                # Remove any existing entry for this user
+                sed -i.bak "/^$mqtt_user:/d" "$passwd_file" 2>/dev/null || true
+                rm -f "${passwd_file}.bak" 2>/dev/null || true
+
+                # Add the user manually
+                echo "$mqtt_user:$(echo -n "$manual_pass" | openssl passwd -6 -stdin)" >> "$passwd_file"
+
+                # Verify the user was added
+                if grep -q "$mqtt_user:" "$passwd_file" 2>/dev/null; then
+                  success=true
+                  print_msg "User added manually!" "$GREEN"
+                fi
+              fi
+            fi
+
+            # Final check
+            if [[ $success == false ]]; then
+              print_msg "All attempts to add user failed." "$RED"
+              print_msg "Please check your system configuration and try again." "$RED"
+              return 1
+            fi
 
             # Set proper permissions
             chmod 600 "$passwd_file" 2>/dev/null || true
