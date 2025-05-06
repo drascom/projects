@@ -257,7 +257,12 @@ configure_mosquitto() {
     print_msg "Mosquitto is already installed" "$GREEN"
   fi
 
-  # Configure Mosquitto for WebSockets
+  # Configure Mosquitto for WebSockets - make this more prominent
+  print_msg "=============================================" "$BLUE"
+  print_msg "MQTT WebSockets Configuration" "$BLUE"
+  print_msg "This enables browser-based MQTT clients to connect" "$BLUE"
+  print_msg "=============================================" "$BLUE"
+
   if ask_yn "Would you like to configure Mosquitto for WebSockets support?" true; then
     print_msg "Configuring Mosquitto for WebSockets..." "$BLUE"
 
@@ -331,6 +336,15 @@ EOF
       require_root
       systemctl enable mosquitto
 
+      # Display configuration summary
+      print_msg "=============================================" "$GREEN"
+      print_msg "Mosquitto Configuration Summary (Linux)" "$GREEN"
+      print_msg "Config file: $config_file" "$GREEN"
+      print_msg "Password file: $passwd_file" "$GREEN"
+      print_msg "MQTT port: 1883" "$GREEN"
+      print_msg "WebSockets port: 9001" "$GREEN"
+      print_msg "=============================================" "$GREEN"
+
     else
       # macOS configuration
       config_file="$(brew --prefix)/etc/mosquitto/mosquitto.conf"
@@ -381,11 +395,24 @@ EOF
       # Restart Mosquitto service
       print_msg "Restarting Mosquitto service..." "$BLUE"
       brew services restart mosquitto
+
+      # Display configuration summary
+      print_msg "=============================================" "$GREEN"
+      print_msg "Mosquitto Configuration Summary (macOS)" "$GREEN"
+      print_msg "Config file: $config_file" "$GREEN"
+      print_msg "Password file: $passwd_file" "$GREEN"
+      print_msg "MQTT port: 1883" "$GREEN"
+      print_msg "WebSockets port: 9001" "$GREEN"
+      print_msg "=============================================" "$GREEN"
     fi
 
     print_msg "Mosquitto configured successfully for WebSockets" "$GREEN"
     print_msg "MQTT broker is now available on port 1883 (MQTT) and 9001 (WebSockets)" "$GREEN"
     print_msg "Remember to use the configured username and password in your .env file" "$YELLOW"
+
+    # Add note about firewall configuration
+    print_msg "NOTE: Make sure ports 1883 and 9001 are open in your firewall" "$YELLOW"
+    print_msg "for remote clients to connect to your MQTT broker" "$YELLOW"
   else
     print_msg "Skipping Mosquitto WebSockets configuration" "$YELLOW"
   fi
