@@ -206,6 +206,193 @@ install_system_deps() {
   fi
 }
 
+# ─── Mosquitto MQTT broker configuration ─────────────────────────────────────────
+configure_mosquitto() {
+  print_msg "Checking Mosquitto MQTT broker installation..." "$BLUE"
+
+  # Check if Mosquitto is installed
+  if ! command_exists mosquitto; then
+    print_msg "Mosquitto MQTT broker is not installed" "$YELLOW"
+
+    if ask_yn "Would you like to install Mosquitto MQTT broker?" true; then
+      print_msg "Installing Mosquitto MQTT broker..." "$BLUE"
+
+      if [[ $OS == linux ]]; then
+        require_root
+        case $DISTRO in
+          ubuntu|debian)
+            apt-get update -y
+            DEBIAN_FRONTEND=noninteractive apt-get install -y mosquitto mosquitto-clients || true
+            ;;
+          arch)
+            pacman -Sy --noconfirm mosquitto || true
+            ;;
+          *)
+            print_msg "Unknown distro – please install mosquitto manually." "$YELLOW"
+            return 1
+            ;;
+        esac
+      else
+        # macOS installation via Homebrew
+        if command_exists brew; then
+          brew install mosquitto || true
+        else
+          print_msg "Homebrew not found - cannot install Mosquitto" "$RED"
+          return 1
+        fi
+      fi
+
+      # Verify installation
+      if ! command_exists mosquitto; then
+        print_msg "Failed to install Mosquitto" "$RED"
+        return 1
+      fi
+
+      print_msg "Mosquitto installed successfully" "$GREEN"
+    else
+      print_msg "Skipping Mosquitto installation" "$YELLOW"
+      return 0
+    fi
+  else
+    print_msg "Mosquitto is already installed" "$GREEN"
+  fi
+
+  # Configure Mosquitto for WebSockets
+  if ask_yn "Would you like to configure Mosquitto for WebSockets support?" true; then
+    print_msg "Configuring Mosquitto for WebSockets..." "$BLUE"
+
+    local config_file=""
+    local passwd_file=""
+
+    if [[ $OS == linux ]]; then
+      config_file="/etc/mosquitto/conf.d/default.conf"
+      passwd_file="/etc/mosquitto/passwd"
+
+      # Create config directory if it doesn't exist
+      if [[ ! -d "/etc/mosquitto/conf.d" ]]; then
+        require_root
+        mkdir -p "/etc/mosquitto/conf.d"
+      fi
+
+      # Create or update config file
+      require_root
+      cat > "$config_file" << EOF
+# MQTT Device Monitor configuration
+# Configured by manage.sh script
+
+# Standard MQTT listener
+listener 1883
+protocol mqtt
+
+# WebSockets listener
+listener 9001
+protocol websockets
+
+# Security settings
+allow_anonymous false
+password_file $passwd_file
+EOF
+
+      # Create password file if it doesn't exist
+      if [[ ! -f "$passwd_file" ]]; then
+        print_msg "Creating Mosquitto password file..." "$BLUE"
+
+        # Prompt for username
+        echo -n "Enter username for Mosquitto authentication: "
+        read -r mqtt_user </dev/tty
+
+        # Create password file
+        require_root
+        mosquitto_passwd -c "$passwd_file" "$mqtt_user"
+
+        # Set proper permissions
+        require_root
+        chown mosquitto:mosquitto "$passwd_file"
+        chmod 600 "$passwd_file"
+      else
+        print_msg "Password file already exists at $passwd_file" "$GREEN"
+
+        if ask_yn "Would you like to add a new user?" false; then
+          echo -n "Enter username for Mosquitto authentication: "
+          read -r mqtt_user </dev/tty
+
+          require_root
+          mosquitto_passwd "$passwd_file" "$mqtt_user"
+        fi
+      fi
+
+      # Restart Mosquitto service
+      print_msg "Restarting Mosquitto service..." "$BLUE"
+      require_root
+      systemctl restart mosquitto
+
+      # Enable Mosquitto service to start at boot
+      print_msg "Enabling Mosquitto service to start at boot..." "$BLUE"
+      require_root
+      systemctl enable mosquitto
+
+    else
+      # macOS configuration
+      config_file="$(brew --prefix)/etc/mosquitto/mosquitto.conf"
+      passwd_file="$(brew --prefix)/etc/mosquitto/passwd"
+
+      # Create or update config file
+      cat > "$config_file" << EOF
+# MQTT Device Monitor configuration
+# Configured by manage.sh script
+
+# Standard MQTT listener
+listener 1883
+protocol mqtt
+
+# WebSockets listener
+listener 9001
+protocol websockets
+
+# Security settings
+allow_anonymous false
+password_file $passwd_file
+EOF
+
+      # Create password file if it doesn't exist
+      if [[ ! -f "$passwd_file" ]]; then
+        print_msg "Creating Mosquitto password file..." "$BLUE"
+
+        # Prompt for username
+        echo -n "Enter username for Mosquitto authentication: "
+        read -r mqtt_user </dev/tty
+
+        # Create password file
+        mosquitto_passwd -c "$passwd_file" "$mqtt_user"
+
+        # Set proper permissions
+        chmod 600 "$passwd_file"
+      else
+        print_msg "Password file already exists at $passwd_file" "$GREEN"
+
+        if ask_yn "Would you like to add a new user?" false; then
+          echo -n "Enter username for Mosquitto authentication: "
+          read -r mqtt_user </dev/tty
+
+          mosquitto_passwd "$passwd_file" "$mqtt_user"
+        fi
+      fi
+
+      # Restart Mosquitto service
+      print_msg "Restarting Mosquitto service..." "$BLUE"
+      brew services restart mosquitto
+    fi
+
+    print_msg "Mosquitto configured successfully for WebSockets" "$GREEN"
+    print_msg "MQTT broker is now available on port 1883 (MQTT) and 9001 (WebSockets)" "$GREEN"
+    print_msg "Remember to use the configured username and password in your .env file" "$YELLOW"
+  else
+    print_msg "Skipping Mosquitto WebSockets configuration" "$YELLOW"
+  fi
+
+  return 0
+}
+
 # ─── Repository ─────────────────────────────────────────────────────────────
 fetch_repo() {
   print_msg "Fetching repository …" "$BLUE"
@@ -904,6 +1091,15 @@ install_workflow() {
     print_msg "System dependencies installed" "$GREEN"
   fi
 
+  # Step 2.5: Configure Mosquitto MQTT broker
+  print_msg "Step 2.5: Checking and configuring Mosquitto MQTT broker..." "$BLUE"
+  if ! configure_mosquitto; then
+    print_msg "Mosquitto configuration had issues" "$YELLOW"
+    print_msg "Continuing anyway, but MQTT functionality might be limited" "$YELLOW"
+  else
+    print_msg "Mosquitto MQTT broker configured" "$GREEN"
+  fi
+
   # Step 3: Fetch repository
   print_msg "Step 3: Fetching repository..." "$BLUE"
   if ! fetch_repo; then
@@ -954,6 +1150,11 @@ install_workflow() {
   print_msg "=============================================" "$GREEN"
   print_msg "Installation complete!" "$GREEN"
   print_msg "Access the web GUI at: http://$ip:$GUI_PORT" "$GREEN"
+  if command_exists mosquitto; then
+    print_msg "MQTT broker is available on:" "$GREEN"
+    print_msg "- MQTT: $ip:1883" "$GREEN"
+    print_msg "- WebSockets: $ip:9001" "$GREEN"
+  fi
   print_msg "=============================================" "$GREEN"
 }
 
@@ -1015,6 +1216,17 @@ reconfigure_workflow() {
     print_msg "Continuing with existing files" "$YELLOW"
   fi
 
+  # Ask if user wants to configure Mosquitto
+  if ask_yn "Would you like to check and configure Mosquitto MQTT broker?" false; then
+    print_msg "Checking and configuring Mosquitto MQTT broker..." "$BLUE"
+    if ! configure_mosquitto; then
+      print_msg "Mosquitto configuration had issues" "$YELLOW"
+      print_msg "Continuing with reconfiguration" "$YELLOW"
+    else
+      print_msg "Mosquitto MQTT broker configured" "$GREEN"
+    fi
+  fi
+
   # Run configuration wizard
   print_msg "Running configuration wizard..." "$BLUE"
   interactive_config
@@ -1043,7 +1255,21 @@ reconfigure_workflow() {
     fi
   fi
 
+  # Determine local IP (best effort)
+  local ip="localhost"
+  if [[ $OS == macos ]]; then
+    ip=$(ipconfig getifaddr en0 2>/dev/null || echo "localhost")
+  elif command_exists hostname; then
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [[ -z $ip ]] && ip="localhost"
+  fi
+
   print_msg "Reconfiguration complete – service restarted." "$GREEN"
+  if command_exists mosquitto; then
+    print_msg "MQTT broker is available on:" "$GREEN"
+    print_msg "- MQTT: $ip:1883" "$GREEN"
+    print_msg "- WebSockets: $ip:9001" "$GREEN"
+  fi
 }
 
 # ─── CLI parsing ────────────────────────────────────────────────────────────
