@@ -2,77 +2,61 @@
 ###############################################################################
 # MQTT‑Device‑Monitor unified installer / un‑installer                        #
 #                                                                            #
-# Supports:  • Debian / Ubuntu   • macOS (intel & Apple Silicon)             #
-# Usage:    curl -fsSL https://raw.githubusercontent.com/drascom/projects/main/mqtt-monitor/manage.sh | bash
+#   Debian / Ubuntu   • macOS (Intel & Apple Silicon)                         #
 #                                                                            #
-#  – If the software is **not installed**, the script performs a full        #
-#    installation.                                                           #
-#  – If the software **is already installed** (detected by its install dir   #
-#    or active service), running the same one‑liner **without flags**        #
-#    performs a complete clean un‑install.                                   #
+# One‑liner (root inside LXC or sudo‑root):                                   #
+#   curl -fsSL https://raw.githubusercontent.com/drascom/projects/main/mqtt-monitor/manage.sh | bash
 #                                                                            #
-# Optional flags (advanced users):
-#   --install       Force install (even if an old copy exists – it will be
-#                   overwritten).
-#   --uninstall     Force removal only.
-#   --help          Print this help.
+# Re‑running the same line:                                                   #
+#   • if NOT installed  → installs                                            #
+#   • if installed     → completely removes                                   #
+#                                                                            #
+# Optional flags (manual override)                                            #
+#   --install       Force install (over‑writes any existing copy)             #
+#   --uninstall     Force uninstall only                                      #
+#   --help          This help                                                 #
 ###############################################################################
 set -Eeuo pipefail
-shopt -s inherit_errexit   # modern bash – propagate error from subshells
+shopt -s inherit_errexit
 
-################################################################################
-# Constants & Globals                                                          #
-################################################################################
-INSTALL_DIR="/opt/mqtt-device-monitor"           # installation root
+########## Constants ##########################################################
+INSTALL_DIR="/opt/mqtt-device-monitor"     # single place for app files
 REPO_URL="https://github.com/drascom/projects.git"
 SYSTEMD_UNIT="/etc/systemd/system/mqtt-device-monitor.service"
 LAUNCHD_PLIST="$HOME/Library/LaunchAgents/com.mqtt-device-monitor.plist"
-PYTHON="python3"                                 # overridable by env
-OS=""                                            # linux|macos
-DISTRO=""                                        # debian|ubuntu|arch|unknown
-ACTUAL_USER=${SUDO_USER:-$(id -un)}              # user who invoked sudo / root
+PYTHON="python3"
+OS=""      # linux|macos
+DISTRO=""  # debian|ubuntu|arch|unknown
+ACTUAL_USER=${SUDO_USER:-$(id -un)}
 
-################################################################################
-# Colours & helpers                                                            #
-################################################################################
+########## Pretty output ######################################################
 RED="\033[0;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; NC="\033[0m"
-msg() { printf "%b%s%b\n" "${2:-$GREEN}" "$1" "$NC" >&2 ; }
-require_root() { (( EUID == 0 )) || { msg "❌  Must be run as root" "$RED"; exit 1; }; }
-cmd_exists()  { command -v "$1" &>/dev/null; }
+msg() { printf "%b%s%b\n" "${2:-$GREEN}" "$1" "$NC" >&2; }
+require_root() { (( EUID==0 )) || { msg "❌  Must run as root" "$RED"; exit 1; }; }
 run_as_user() { sudo -u "$ACTUAL_USER" "$@"; }
+cmd_exists()  { command -v "$1" &>/dev/null; }
 
-################################################################################
-# OS Detection                                                                 #
-################################################################################
+########## Detect OS ##########################################################
 detect_os() {
   case $(uname -s) in
     Linux*)  OS="linux" ;;
     Darwin*) OS="macos" ;;
-    *)       msg "Unsupported OS $(uname -s)" "$RED"; exit 1 ;;
+    *) msg "Unsupported OS $(uname -s)" "$RED"; exit 1 ;;
   esac
-
-  if [[ $OS == linux ]]; then
-    # shellcheck disable=SC1091
-    source /etc/os-release || true
-    DISTRO=${ID:-unknown}
-  fi
-
-  msg "Detected $OS ${DISTRO:-}" "$BLUE"
+  if [[ $OS == linux ]]; then source /etc/os-release; DISTRO=${ID:-unknown}; fi
+  msg "Detected $OS${DISTRO:+/$DISTRO}" "$BLUE"
 }
 
-################################################################################
-# System packages                                                              #
-################################################################################
+########## Dependencies #######################################################
 install_deps() {
-  msg "Installing OS dependencies …" "$BLUE"
-
+  msg "Installing packages …" "$BLUE"
   if [[ $OS == linux ]]; then
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       git curl build-essential mosquitto mosquitto-clients $PYTHON $PYTHON-venv
+        git curl build-essential mosquitto mosquitto-clients $PYTHON $PYTHON-venv
   else
     if ! cmd_exists brew; then
-      msg "Installing Homebrew … (may prompt for password)" "$YELLOW"
+      msg "Installing Homebrew …" "$YELLOW"
       /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
       eval "$(/opt/homebrew/bin/brew shellenv || /usr/local/bin/brew shellenv)"
     fi
@@ -82,76 +66,69 @@ install_deps() {
   fi
 }
 
-################################################################################
-# Mosquitto configuration (auth + websockets)                                  #
-################################################################################
+########## Mosquitto broker ###################################################
 configure_mosquitto() {
-  msg "Configuring Mosquitto broker …" "$BLUE"
-
-  local conf passwd
+  msg "Configuring Mosquitto …" "$BLUE"
+  local conf passwd main_conf
   if [[ $OS == linux ]]; then
     conf="/etc/mosquitto/conf.d/mqtt-monitor.conf"
     passwd="/etc/mosquitto/passwd"
+    main_conf="/etc/mosquitto/mosquitto.conf"
     mkdir -p /etc/mosquitto/conf.d
   else
     conf="$(brew --prefix)/etc/mosquitto/mqtt-monitor.conf"
     passwd="$(brew --prefix)/etc/mosquitto/passwd"
+    main_conf="$(brew --prefix)/etc/mosquitto/mosquitto.conf"
   fi
 
-  # authentication prompt
-  read -rp "MQTT username (leave blank for anonymous): " USERNAME </dev/tty || true
-  if [[ -n "$USERNAME" ]]; then
-    # Interactive password twice for safety
-    local p1 p2
+  # interactive auth choice ---------------------------------------------------
+  read -rp "MQTT username (blank = anonymous): " USERNAME </dev/tty || true
+  if [[ -n $USERNAME ]]; then
+    local pw1 pw2
     while true; do
-      read -srp "Password for $USERNAME: " p1 </dev/tty && echo
-      read -srp "Confirm   password: " p2 </dev/tty && echo
-      [[ "$p1" == "$p2" && -n "$p1" ]] && break
+      read -srp "Password for $USERNAME: " pw1 </dev/tty && echo
+      read -srp "Confirm password: " pw2 </dev/tty && echo
+      [[ $pw1 == $pw2 && -n $pw1 ]] && break
       msg "Passwords don't match – try again" "$YELLOW"
     done
-    mosquitto_passwd -c -b "$passwd" "$USERNAME" "$p1"
-    chown mosquitto:mosquitto "$passwd"
-    chmod 600 "$passwd"
+    mosquitto_passwd -c -b "$passwd" "$USERNAME" "$pw1"
+    chown mosquitto:mosquitto "$passwd"; chmod 600 "$passwd"
   fi
 
+  # write dedicated conf snippet ---------------------------------------------
   cat >"$conf" <<EOF
-# Auto‑generated by manage.sh
+# Generated by manage.sh – DO NOT EDIT BY HAND
 listener 1883
 protocol mqtt
 listener 9001
 protocol websockets
-allow_anonymous $([[ -z "$USERNAME" ]] && echo true || echo false)
-$( [[ -n "$USERNAME" ]] && echo "password_file $passwd" )
+allow_anonymous $([[ -z $USERNAME ]] && echo true || echo false)
+$( [[ -n $USERNAME ]] && echo "password_file $passwd" )
 EOF
 
+  # ensure main mosquitto.conf has no stale password_file ---------------------
+  if [[ -z $USERNAME ]]; then
+    sed -i '/^password_file[[:space:]]\+/d' "$main_conf" 2>/dev/null || true
+  fi
+
+  # restart -------------------------------------------------------------------
   if [[ $OS == linux ]]; then
-    systemctl restart mosquitto
-    systemctl enable  mosquitto
+    systemctl restart mosquitto; systemctl enable mosquitto
   else
     brew services restart mosquitto
   fi
 
-  msg "Mosquitto ready (MQTT :1883, WS :9001)" "$GREEN"
+  msg "Mosquitto ready (MQTT :1883  WS :9001)" "$GREEN"
 }
 
-################################################################################
-# Git clone                                                                    #
-################################################################################
+########## Clone repo #########################################################
 fetch_repo() {
-  if [[ -d $INSTALL_DIR ]]; then
-    msg "Existing installation detected in $INSTALL_DIR – overwriting" "$YELLOW"
-    rm -rf "$INSTALL_DIR"
-  fi
+  [[ -d $INSTALL_DIR ]] && { msg "Replacing old install" "$YELLOW"; rm -rf "$INSTALL_DIR"; }
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
-  # we only need mqtt-monitor subdir
-  if [[ ! -f "$INSTALL_DIR/mqtt-monitor/main.py" ]]; then
-    msg "Repository layout changed – aborting" "$RED"; exit 1
-  fi
+  [[ -f $INSTALL_DIR/mqtt-monitor/main.py ]] || { msg "Repo layout unexpected" "$RED"; exit 1; }
 }
 
-################################################################################
-# Python virtualenv & requirements                                             #
-################################################################################
+########## Virtual env ########################################################
 setup_venv() {
   cd "$INSTALL_DIR/mqtt-monitor"
   $PYTHON -m venv .venv
@@ -161,46 +138,38 @@ setup_venv() {
   deactivate
 }
 
-################################################################################
-# .env interactive wizard                                                      #
-################################################################################
+########## .env wizard ########################################################
 create_env_file() {
   cd "$INSTALL_DIR/mqtt-monitor"
-  local env=.env
-  msg "Creating $env …" "$BLUE"
-  local broker="localhost" port="9001" gui_port="9876" dev_id="$(hostname)" user="$USERNAME" pass="${p1:-}"
-  read -rp "MQTT broker [$broker]: " tmp </dev/tty || true; broker=${tmp:-$broker}
-  read -rp "MQTT port   [$port]  : " tmp </dev/tty || true; port=${tmp:-$port}
-  read -rp "GUI  port   [$gui_port]: " tmp </dev/tty || true; gui_port=${tmp:-$gui_port}
+  local env=.env broker="localhost" port=9001 gui_port=9876 id="$(hostname)"
+  read -rp "Broker hostname [$broker]: " tmp </dev/tty || true; broker=${tmp:-$broker}
+  read -rp "Broker port [$port]: " tmp </dev/tty || true; port=${tmp:-$port}
+  read -rp "GUI port [$gui_port]: " tmp </dev/tty || true; gui_port=${tmp:-$gui_port}
   cat >"$env" <<EOF
 MQTT_BROKER=$broker
 MQTT_PORT=$port
-MQTT_USERNAME=$user
-MQTT_PASSWORD=$pass
-DEVICE_ID=$dev_id
+MQTT_USERNAME=$USERNAME
+MQTT_PASSWORD=$pw1
+DEVICE_ID=$id
 GUI_HOST=0.0.0.0
 GUI_PORT=$gui_port
 EOF
   chmod 600 "$env"
 }
 
-################################################################################
-# Service files                                                                #
-################################################################################
+########## Service files ######################################################
 create_service() {
   if [[ $OS == linux ]]; then
     cat >"$SYSTEMD_UNIT" <<EOF
 [Unit]
 Description=MQTT Device Monitor
 After=network.target mosquitto.service
-
 [Service]
 Type=simple
 User=$ACTUAL_USER
 WorkingDirectory=$INSTALL_DIR/mqtt-monitor
 ExecStart=$INSTALL_DIR/mqtt-monitor/.venv/bin/python main.py
 Restart=on-failure
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -223,45 +192,33 @@ EOF
 EOF
     chown "$ACTUAL_USER" "$LAUNCHD_PLIST"
     launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
-    launchctl load   "$LAUNCHD_PLIST"
+    launchctl load "$LAUNCHD_PLIST"
   fi
 }
 
-remove_everything() {
-  msg "Removing MQTT‑Device‑Monitor …" "$BLUE"
-  if [[ -f $SYSTEMD_UNIT ]]; then
-    systemctl disable --now mqtt-device-monitor.service || true
-    rm -f "$SYSTEMD_UNIT"
-    systemctl daemon-reload
-  fi
-  if [[ -f $LAUNCHD_PLIST ]]; then
-    launchctl unload "$LAUNCHD_PLIST" || true
-    rm -f "$LAUNCHD_PLIST"
-  fi
+########## Clean removal ######################################################
+remove_all() {
+  msg "Uninstalling …" "$BLUE"
+  [[ -f $SYSTEMD_UNIT ]] && { systemctl disable --now mqtt-device-monitor.service || true; rm -f "$SYSTEMD_UNIT"; systemctl daemon-reload; }
+  [[ -f $LAUNCHD_PLIST ]] && { launchctl unload "$LAUNCHD_PLIST" || true; rm -f "$LAUNCHD_PLIST"; }
   rm -rf "$INSTALL_DIR"
   msg "Removal complete" "$GREEN"
 }
 
-################################################################################
-# Main                                                                         #
-################################################################################
+########## CLI parsing ########################################################
+OP=auto
+case "${1:-}" in
+  --install)   OP=install ;;
+  --uninstall) OP=uninstall ;;
+  -h|--help)   grep -m1 -A99 "^###############################################################################" "$0" | sed '1,2d;/^###############################################################################/q'; exit 0 ;;
+esac
 require_root
-OPERATION="auto"   # auto‑toggle
-[[ ${1:-} == --install ]]   && OPERATION="install"
-[[ ${1:-} == --uninstall ]] && OPERATION="uninstall"
-[[ ${1:-} == --help || ${1:-} == -h ]] && {
-  grep -m1 -A99 "^###############################################################################" "$0" | sed '1,2d;/^###############################################################################/q'; exit 0; }
-
-if [[ $OPERATION == auto ]]; then
-  if [[ -d $INSTALL_DIR ]]; then OPERATION="uninstall"; else OPERATION="install"; fi
-fi
-
 detect_os
 
-if [[ $OPERATION == uninstall ]]; then
-  remove_everything
-  exit 0
-fi
+# decide auto behaviour
+[[ $OP == auto ]] && [[ -d $INSTALL_DIR ]] && OP=uninstall || [[ $OP == auto ]] && OP=install
+
+if [[ $OP == uninstall ]]; then remove_all; exit 0; fi
 
 install_deps
 configure_mosquitto
@@ -269,5 +226,4 @@ fetch_repo
 setup_venv
 create_env_file
 create_service
-
-msg "✅  Installation complete. Access GUI on http://$(hostname -I 2>/dev/null | awk '{print $1}'):${gui_port:-9876}" "$GREEN"
+msg "✅  Done. GUI -> http://$(hostname -I 2>/dev/null | awk '{print $1}'):${gui_port:-9876}" "$GREEN"
