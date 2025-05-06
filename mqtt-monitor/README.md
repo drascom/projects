@@ -21,7 +21,7 @@ A modular application that monitors various device components and publishes stat
 The easiest way to install MQTT Device Monitor is using the unified management script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | bash
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/main/mqtt-monitor/manage.sh | bash
 ```
 
 This single command will:
@@ -35,7 +35,7 @@ This single command will:
 If you need to install system packages on Linux, run with sudo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/main/mqtt-monitor/manage.sh | sudo bash
 ```
 
 ### Management Commands
@@ -61,13 +61,13 @@ The `manage.sh` script provides several options:
 You can also uninstall the application with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/main/mqtt-monitor/manage.sh | bash -s -- --uninstall
 ```
 
 If you installed with sudo (on Linux), use:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drascom/projects/mqtt-monitor/main/manage.sh | sudo bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/drascom/projects/main/mqtt-monitor/manage.sh | sudo bash -s -- --uninstall
 ```
 
 This will:
