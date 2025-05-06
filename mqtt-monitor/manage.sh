@@ -430,7 +430,7 @@ EOF
             config_content=$(cat "$config_file")
             config_content=${config_content/password_file \/etc\/mosquitto\/passwd/password_file $passwd_file}
             echo "$config_content" | require_root tee "$config_file" > /dev/null
-          }
+          fi
 
           # Update config to require authentication
           print_msg "Configuring Mosquitto to require authentication..." "$GREEN"
@@ -519,7 +519,7 @@ EOF
               print_msg "User $mqtt_user added successfully to $passwd_file" "$GREEN"
             else
               print_msg "Warning: Failed to verify user was added" "$RED"
-            }
+            fi
           else
             print_msg "No username provided, skipping user addition" "$YELLOW"
           fi
@@ -664,7 +664,7 @@ EOF
             config_content=$(cat "$config_file")
             config_content=${config_content/password_file $(brew --prefix)\/etc\/mosquitto\/passwd/password_file $passwd_file}
             echo "$config_content" > "$config_file"
-          }
+          fi
 
           # Update config to require authentication
           print_msg "Configuring Mosquitto to require authentication..." "$GREEN"
@@ -749,7 +749,7 @@ EOF
               print_msg "User $mqtt_user added successfully to $passwd_file" "$GREEN"
             else
               print_msg "Warning: Failed to verify user was added" "$RED"
-            }
+            fi
           else
             print_msg "No username provided, skipping user addition" "$YELLOW"
           fi
