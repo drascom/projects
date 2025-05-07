@@ -13,13 +13,15 @@ sudo mosquitto_passwd -c -b /etc/mosquitto/passwd admin changeme
 sudo chown mosquitto:mosquitto /etc/mosquitto/passwd
 
 # Configure Mosquitto to use password file, disable anonymous access, and enable websockets
-CONF_FILE="/etc/mosquitto/conf.d/auth.conf"
+CONF_FILE="/etc/mosquitto/conf.d/default.conf"
 sudo bash -c "cat > $CONF_FILE" <<EOF
 allow_anonymous false
 password_file /etc/mosquitto/passwd
-
+listener 1883
+protocol mqtt
 listener 9001
 protocol websockets
+
 EOF
 
 # Restart and enable Mosquitto service
