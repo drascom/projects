@@ -1,13 +1,18 @@
 #!/bin/bash
 
+set -e
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <username> <password>"
+    exit 1
+fi
+
+MQTT_USER="$1"
+MQTT_PASS="$2"
+
 # Install Mosquitto and its clients
 sudo apt update
 sudo apt install -y mosquitto mosquitto-clients
-
-# Prompt for username and password
-read -p "Enter Mosquitto username: " MQTT_USER
-read -s -p "Enter Mosquitto password: " MQTT_PASS
-echo
 
 # Create Mosquitto password file
 sudo mosquitto_passwd -c -b /etc/mosquitto/passwd "$MQTT_USER" "$MQTT_PASS"
