@@ -8,15 +8,16 @@ This repository contains multiple independent projects, each in its own director
 A tool to intercept and monitor API requests between clients and Ollama server using mitmproxy.
 - [Go to project](./ollama-request-interceptor)
 
-### MQTT Device Monitor
-A modular application that monitors various device components (CPU, GPU) and publishes statistics to an MQTT broker, with an integrated web interface for visualization.
-- [Go to project](./mqtt-monitor)
+### MQTT Publisher
+A modular system for collecting device statistics and publishing them to an MQTT broker.
+- [Go to project](./mqtt-publisher)
 - **Features**:
   - Cross-platform support (Linux, Windows, macOS)
   - GPU monitoring (NVIDIA, Apple Silicon)
   - CPU monitoring with temperature and frequency tracking
   - GPU fan control with customizable temperature-based profiles
-  - Real-time web interface for data visualization
+  - Modular architecture for easy extension
+  - Automatic fallback to mock data
   - Automatic service installation
   - JSON configuration for fan control settings
 
@@ -32,12 +33,13 @@ repository/
 │   ├── README.md
 │   ├── install-interceptor.sh
 │   └── ...
-├── mqtt-monitor/
+├── mqtt-publisher/
 │   ├── README.md
-│   ├── main.py
-│   ├── manage.sh
-│   ├── mqtt/
-│   ├── gui/
+│   ├── app.py
+│   ├── optimized_app.py
+│   ├── install.sh
+│   ├── uninstall.sh
+│   ├── modules/
 │   └── ...
 └── ...
 ```
@@ -46,9 +48,9 @@ repository/
 
 Navigate to the specific project directory you're interested in and follow the instructions in that project's README.md file.
 
-### MQTT Device Monitor - Fan Control
+### MQTT Publisher - Fan Control
 
-The MQTT Device Monitor includes a GPU fan control module for NVIDIA GPUs that allows you to define custom temperature ranges and corresponding fan speeds. This feature helps optimize cooling and noise levels based on your preferences.
+The MQTT Publisher includes a GPU fan control module for NVIDIA GPUs that allows you to define custom temperature ranges and corresponding fan speeds. This feature helps optimize cooling and noise levels based on your preferences.
 
 #### Fan Configuration
 
@@ -82,7 +84,7 @@ The fan control settings are defined in a JSON configuration file (`fan_config.j
   - `fan_speed`: Fan speed percentage (0-100)
   - `hysteresis`: Temperature change required to trigger a fan speed update
 
-For more details, see the [Fan Control Documentation](./mqtt-monitor/README_fan.md).
+For more details, see the project's README file.
 
 ## Contributing
 

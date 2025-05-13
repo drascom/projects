@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 import sys
 from dotenv import load_dotenv
 import os
-from mqtt.modules import loader
+from modules import loader
 import threading
 import logging
 from datetime import datetime

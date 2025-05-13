@@ -68,7 +68,7 @@ def load_module(module_name):
                 # Try to load the macOS-specific module first
                 if debug_mode:
                     print(f"DEBUG LOADER: Trying to load macOS-specific module: {module_name}_macos")
-                module = importlib.import_module(f"mqtt.modules.{module_name}_macos")
+                module = importlib.import_module(f"modules.{module_name}_macos")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded macOS-specific module: {module_name}_macos")
                 return module
@@ -77,7 +77,7 @@ def load_module(module_name):
                 if debug_mode:
                     print(f"DEBUG LOADER: No macOS-specific module for {module_name}, error: {e}")
                     print(f"DEBUG LOADER: Falling back to generic module: {module_name}")
-                module = importlib.import_module(f"mqtt.modules.{module_name}")
+                module = importlib.import_module(f"modules.{module_name}")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded generic module: {module_name}")
                 return module
@@ -88,7 +88,7 @@ def load_module(module_name):
                 # Try to load the macOS-specific module first
                 if debug_mode:
                     print(f"DEBUG LOADER: Trying to load macOS-specific module: {module_name}_macos")
-                module = importlib.import_module(f"mqtt.modules.{module_name}_macos")
+                module = importlib.import_module(f"modules.{module_name}_macos")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded macOS-specific module: {module_name}_macos")
                 return module
@@ -97,7 +97,7 @@ def load_module(module_name):
                 if debug_mode:
                     print(f"DEBUG LOADER: No macOS-specific module for {module_name}, error: {e}")
                     print(f"DEBUG LOADER: Falling back to generic module: {module_name}")
-                module = importlib.import_module(f"mqtt.modules.{module_name}")
+                module = importlib.import_module(f"modules.{module_name}")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded generic module: {module_name}")
                 return module
@@ -108,7 +108,7 @@ def load_module(module_name):
                 # Try to load the Linux-specific module first
                 if debug_mode:
                     print(f"DEBUG LOADER: Trying to load Linux-specific module: {module_name}_linux")
-                module = importlib.import_module(f"mqtt.modules.{module_name}_linux")
+                module = importlib.import_module(f"modules.{module_name}_linux")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded Linux-specific module: {module_name}_linux")
                 return module
@@ -117,7 +117,7 @@ def load_module(module_name):
                 if debug_mode:
                     print(f"DEBUG LOADER: No Linux-specific module for {module_name}, error: {e}")
                     print(f"DEBUG LOADER: Falling back to generic module: {module_name}")
-                module = importlib.import_module(f"mqtt.modules.{module_name}")
+                module = importlib.import_module(f"modules.{module_name}")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded generic module: {module_name}")
                 return module
@@ -128,7 +128,7 @@ def load_module(module_name):
                 # Try to load the Windows-specific module first
                 if debug_mode:
                     print(f"DEBUG LOADER: Trying to load Windows-specific module: {module_name}_windows")
-                module = importlib.import_module(f"mqtt.modules.{module_name}_windows")
+                module = importlib.import_module(f"modules.{module_name}_windows")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded Windows-specific module: {module_name}_windows")
                 return module
@@ -137,7 +137,7 @@ def load_module(module_name):
                 if debug_mode:
                     print(f"DEBUG LOADER: No Windows-specific module for {module_name}, error: {e}")
                     print(f"DEBUG LOADER: Falling back to generic module: {module_name}")
-                module = importlib.import_module(f"mqtt.modules.{module_name}")
+                module = importlib.import_module(f"modules.{module_name}")
                 if debug_mode:
                     print(f"DEBUG LOADER: Successfully loaded generic module: {module_name}")
                 return module
@@ -146,7 +146,7 @@ def load_module(module_name):
         else:
             if debug_mode:
                 print(f"DEBUG LOADER: Using generic module for unknown platform: {module_name}")
-            module = importlib.import_module(f"mqtt.modules.{module_name}")
+            module = importlib.import_module(f"modules.{module_name}")
             if debug_mode:
                 print(f"DEBUG LOADER: Successfully loaded generic module: {module_name}")
             return module
